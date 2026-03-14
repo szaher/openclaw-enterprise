@@ -1,0 +1,103 @@
+# Air-Gapped: OpenClawInstance with Private Registry
+# Deployment for environments without internet access. All container images
+# are pulled from a private/internal registry that has been pre-loaded
+# with the required images.
+#
+# Prerequisites:
+#   - Mirror these images to your private registry:
+#     - ghcr.io/szaher/openclaw-enterprise/gateway:<version>
+#     - ghcr.io/szaher/openclaw-enterprise/opa:<version>
+#   - Create an ImagePullSecret for your private registry (see imagepullsecret.yaml)
+#   - PostgreSQL and Redis accessible within the air-gapped network
+#
+# Usage: kubectl apply -f instance-airgapped.yaml
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openclaw-enterprise
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    environment: air-gapped
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: openclaw-postgres
+  namespace: openclaw-enterprise
+type: Opaque
+stringData:
+  # Internal PostgreSQL — no external network required
+  connection-string: "postgres://openclaw:CHANGE_ME@postgres.internal.local:5432/openclaw?sslmode=verify-full&sslrootcert=/etc/ssl/certs/internal-ca.crt"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: openclaw-redis
+  namespace: openclaw-enterprise
+type: Opaque
+stringData:
+  # Internal Redis — no external network required
+  connection-string: "redis://:CHANGE_ME@redis.internal.local:6379/0"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: openclaw-sso
+  namespace: openclaw-enterprise
+type: Opaque
+stringData:
+  # Internal OIDC provider client secret
+  client-secret: "CHANGE_ME_INTERNAL_SSO_SECRET"
+---
+apiVersion: openclaw.enterprise.io/v1
+kind: OpenClawInstance
+metadata:
+  name: openclaw-airgapped
+  namespace: openclaw-enterprise
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    environment: air-gapped
+spec:
+  deploymentMode: ha
+  replicas: 3
+  auth:
+    # Internal OIDC provider (e.g., Keycloak deployed in the same network)
+    provider: "https://keycloak.internal.local/realms/openclaw"
+    clientId: "openclaw-enterprise"
+    clientSecretRef:
+      name: openclaw-sso
+      key: client-secret
+  storage:
+    postgresSecretRef:
+      name: openclaw-postgres
+      key: connection-string
+    redisSecretRef:
+      name: openclaw-redis
+      key: connection-string
+  # Point to your private registry — these images must be pre-mirrored
+  images:
+    gateway: "registry.internal.local/openclaw-enterprise/gateway:v1.2.0"
+    opa: "registry.internal.local/openclaw-enterprise/opa:v1.2.0"
+  # In air-gapped environments, only enable connectors that can reach
+  # internal services. External connectors (Gmail, GitHub) will not work.
+  integrations:
+    - type: jira
+      enabled: true
+      config:
+        # Jira Data Center (self-hosted, accessible within the network)
+        baseUrl: "https://jira.internal.local"
+        apiTokenSecretRef: "openclaw-jira-token"
+        defaultProject: "ENG"
+    - type: gmail
+      enabled: false
+      config: {}
+    - type: gcal
+      enabled: false
+      config: {}
+    - type: github
+      enabled: false
+      config: {}
+    - type: gdrive
+      enabled: false
+      config: {}

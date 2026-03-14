@@ -1,0 +1,85 @@
+# Multi-Tenant: Sales Tenant Instance
+# OpenClawInstance for the sales department. Includes Gmail, Google Calendar,
+# and Google Drive connectors for customer-facing workflows. Single mode is
+# sufficient for smaller team size.
+#
+# Usage: kubectl apply -f tenant-sales.yaml
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openclaw-sales
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    tenant: sales
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: openclaw-postgres
+  namespace: openclaw-sales
+type: Opaque
+stringData:
+  connection-string: "postgres://openclaw_sales:CHANGE_ME@postgres.example.com:5432/openclaw_sales?sslmode=require"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: openclaw-redis
+  namespace: openclaw-sales
+type: Opaque
+stringData:
+  connection-string: "redis://:CHANGE_ME@redis.example.com:6379/2"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: openclaw-sso
+  namespace: openclaw-sales
+type: Opaque
+stringData:
+  client-secret: "CHANGE_ME_SALES_SSO_SECRET"
+---
+apiVersion: openclaw.enterprise.io/v1
+kind: OpenClawInstance
+metadata:
+  name: openclaw-sales
+  namespace: openclaw-sales
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    tenant: sales
+spec:
+  deploymentMode: single
+  replicas: 2
+  auth:
+    provider: "https://login.your-company.com/realms/openclaw"
+    clientId: "openclaw-sales"
+    clientSecretRef:
+      name: openclaw-sso
+      key: client-secret
+  storage:
+    postgresSecretRef:
+      name: openclaw-postgres
+      key: connection-string
+    redisSecretRef:
+      name: openclaw-redis
+      key: connection-string
+  integrations:
+    - type: gmail
+      enabled: true
+      config:
+        serviceAccountEmail: "openclaw-sales@your-company.iam.gserviceaccount.com"
+        delegatedUser: "sales-team@your-company.com"
+        scopes: "https://www.googleapis.com/auth/gmail.readonly,https://www.googleapis.com/auth/gmail.send"
+    - type: gcal
+      enabled: true
+      config:
+        serviceAccountEmail: "openclaw-sales@your-company.iam.gserviceaccount.com"
+        delegatedUser: "sales-team@your-company.com"
+        scopes: "https://www.googleapis.com/auth/calendar"
+    - type: gdrive
+      enabled: true
+      config:
+        serviceAccountEmail: "openclaw-sales@your-company.iam.gserviceaccount.com"
+        delegatedUser: "sales-team@your-company.com"
+        sharedDriveId: "0RSalesDriveIdHere"

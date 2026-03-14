@@ -1,0 +1,112 @@
+# Policy Example: Agent-to-Agent (OCIP) Communication
+# Controls cross-organization and cross-agent communication using the
+# OpenClaw Interchange Protocol (OCIP). Includes trust verification,
+# data classification filtering, and loop prevention.
+#
+# Use this when you need to:
+#   - Define which external organizations can send messages to your agents
+#   - Filter OCIP messages based on data classification
+#   - Prevent message routing loops
+#   - Control what data can leave the organization boundary
+#
+# Usage: kubectl apply -f agent-to-agent.yaml
+---
+apiVersion: openclaw.enterprise.io/v1
+kind: PolicyBundle
+metadata:
+  name: agent-to-agent
+  namespace: openclaw-enterprise
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    policy-domain: agent-to-agent
+spec:
+  policies:
+    - scope: enterprise
+      domain: agent-to-agent
+      name: ocip-filtering
+      content: |
+        package openclaw.enterprise.ocip
+
+        default allow_ocip_message = false
+
+        # --- Inbound message filtering ---
+
+        # Allow messages from same organization (internal routing)
+        allow_ocip_message {
+          input.direction == "inbound"
+          input.source.organization == input.destination.organization
+        }
+
+        # Allow messages from explicitly trusted organizations
+        allow_ocip_message {
+          input.direction == "inbound"
+          input.source.organization in trusted_organizations
+          input.envelope.data_classification in {"public", "internal"}
+        }
+
+        # Trusted partner organizations — customize this list
+        trusted_organizations := {
+          "partner-corp.openclaw.io",
+          "vendor-inc.openclaw.io",
+          "subsidiary.your-company.openclaw.io",
+        }
+
+        # --- Outbound message filtering ---
+
+        # Allow outbound messages with public data only
+        allow_ocip_message {
+          input.direction == "outbound"
+          input.envelope.data_classification == "public"
+        }
+
+        # Allow outbound to trusted orgs with internal data
+        allow_ocip_message {
+          input.direction == "outbound"
+          input.destination.organization in trusted_organizations
+          input.envelope.data_classification in {"public", "internal"}
+        }
+
+        # --- Deny rules ---
+
+        # Block messages with confidential/restricted data leaving the org
+        deny_ocip_message[msg] {
+          input.direction == "outbound"
+          input.envelope.data_classification in {"confidential", "restricted"}
+          msg := sprintf("Cannot send %s data outside organization boundary", [input.envelope.data_classification])
+        }
+
+        # Block messages from untrusted organizations
+        deny_ocip_message[msg] {
+          input.direction == "inbound"
+          not input.source.organization == input.destination.organization
+          not input.source.organization in trusted_organizations
+          msg := sprintf("Organization '%s' is not in the trusted list", [input.source.organization])
+        }
+
+        # --- Loop prevention ---
+
+        # Require hop count header
+        deny_ocip_message[msg] {
+          not input.envelope.headers["X-OCIP-Hop-Count"]
+          msg := "OCIP messages must include X-OCIP-Hop-Count header"
+        }
+
+        # Block messages exceeding hop limit
+        deny_ocip_message[msg] {
+          hop_count := to_number(input.envelope.headers["X-OCIP-Hop-Count"])
+          hop_count > 5
+          msg := sprintf("OCIP message exceeded maximum hop count (current: %d, max: 5)", [hop_count])
+        }
+
+        # Detect routing loops via message trail
+        deny_ocip_message[msg] {
+          trail := input.envelope.headers["X-OCIP-Trail"]
+          contains(trail, input.destination.agent_id)
+          msg := "OCIP routing loop detected: destination agent already in message trail"
+        }
+
+        # --- Message size limits ---
+        deny_ocip_message[msg] {
+          input.envelope.payload_size_bytes > 1048576  # 1MB
+          msg := "OCIP message payload exceeds maximum size of 1MB"
+        }

@@ -1,0 +1,49 @@
+# Connector Example: Jira + GitHub (Developer Setup)
+# OpenClawInstance with Jira and GitHub connectors for engineering teams.
+# Enables AI-powered work tracking, PR-Jira correlation, standup generation,
+# and task intelligence across both platforms.
+#
+# Prerequisites:
+#   - Jira: API token with project read/write access
+#   - GitHub: GitHub App installed with repository access
+#
+# Usage: kubectl apply -f jira-github.yaml
+---
+apiVersion: openclaw.enterprise.io/v1
+kind: OpenClawInstance
+metadata:
+  name: openclaw-dev
+  namespace: openclaw-enterprise
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    connector-profile: jira-github
+spec:
+  deploymentMode: single
+  replicas: 2
+  auth:
+    provider: "https://login.your-company.com/realms/openclaw"
+    clientId: "openclaw-dev"
+    clientSecretRef:
+      name: openclaw-sso
+      key: client-secret
+  storage:
+    postgresSecretRef:
+      name: openclaw-postgres
+      key: connection-string
+    redisSecretRef:
+      name: openclaw-redis
+      key: connection-string
+  integrations:
+    - type: jira
+      enabled: true
+      config:
+        baseUrl: "https://your-company.atlassian.net"
+        apiTokenSecretRef: "openclaw-jira-token"
+        defaultProject: "ENG"
+    - type: github
+      enabled: true
+      config:
+        appId: "12345"
+        installationId: "67890"
+        privateKeySecretRef: "openclaw-github-app-key"
+        organization: "your-company"

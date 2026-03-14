@@ -1,0 +1,12 @@
+# Quickstart: Kustomization
+# Applies all quickstart resources in the correct order.
+#
+# Usage: kubectl apply -k examples/quickstart/
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - secrets.yaml
+  - instance-minimal.yaml

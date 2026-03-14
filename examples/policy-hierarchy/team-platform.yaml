@@ -1,0 +1,103 @@
+# Policy Hierarchy: Team-Level Override (Platform Team)
+# Further narrows the org-level engineering policies for the platform team.
+# The platform team has infrastructure responsibilities and gets additional
+# auto-approved actions for infrastructure tooling, but with tighter controls
+# on production access.
+#
+# Hierarchy so far:
+#   enterprise (broadest) > org:engineering > team:platform (this file)
+#
+# Usage: kubectl apply -f team-platform.yaml
+---
+apiVersion: openclaw.enterprise.io/v1
+kind: PolicyBundle
+metadata:
+  name: team-platform
+  namespace: openclaw-engineering
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    policy-tier: team
+    org: engineering
+    team: platform
+spec:
+  policies:
+    - scope: team
+      domain: actions
+      name: team-platform-actions
+      content: |
+        package openclaw.enterprise.actions
+
+        default autonomy_level = "approve"
+
+        # Inherit auto-reads from higher scopes
+        autonomy_level = "auto" {
+          input.action.type == "read"
+        }
+
+        autonomy_level = "auto" {
+          input.action.type in {"search", "list", "summarize"}
+        }
+
+        # Platform team: auto-approve infrastructure-related code operations
+        autonomy_level = "auto" {
+          input.action.type == "create"
+          input.action.resource in {"comment", "draft-pr", "branch"}
+        }
+
+        # Platform team: auto-approve CI/CD related reads
+        autonomy_level = "auto" {
+          input.action.type == "read"
+          input.action.resource in {"pipeline", "deployment", "logs"}
+        }
+
+        # Platform team narrowing: require approval for production changes
+        autonomy_level = "approve" {
+          input.action.type in {"create", "update"}
+          input.action.environment == "production"
+        }
+
+        # Non-production writes can be auto-approved
+        autonomy_level = "auto" {
+          input.action.type in {"create", "update"}
+          input.action.environment in {"development", "staging"}
+          input.action.resource in {"deployment", "config"}
+        }
+
+        # Maintain blocks from higher scopes
+        autonomy_level = "block" {
+          input.action.type in {"delete", "grant", "revoke"}
+        }
+
+    - scope: team
+      domain: features
+      name: team-platform-features
+      content: |
+        package openclaw.enterprise.features
+
+        default allow_feature = false
+
+        # Platform team gets all standard features
+        allow_feature {
+          input.feature.name in {
+            "task-intelligence",
+            "work-tracking",
+            "visualization",
+            "audit-log-view",
+            "connector-read",
+            "auto-response",
+            "org-intelligence",
+            "briefing-generation",
+            "connector-write",
+            "custom-dashboards",
+          }
+          input.user.authenticated == true
+        }
+
+        # Platform team gets infrastructure-specific experimental features
+        allow_feature {
+          input.feature.name in {
+            "predictive-task-scoring",
+            "auto-response-v2",
+          }
+          input.user.team == "platform"
+        }

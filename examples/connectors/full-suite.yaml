@@ -1,0 +1,79 @@
+# Connector Example: Full Suite (All 5 Connectors)
+# OpenClawInstance with all five connectors enabled: Gmail, Google Calendar,
+# Jira, GitHub, and Google Drive. This is the maximum integration setup,
+# providing AI capabilities across all supported platforms.
+#
+# Prerequisites:
+#   - Google Workspace: Service account with domain-wide delegation
+#     for Gmail, Calendar, and Drive APIs
+#   - Jira: API token or OAuth app with project access
+#   - GitHub: GitHub App installed on your organization
+#   - All connector secrets created (see comments in each config)
+#
+# Usage: kubectl apply -f full-suite.yaml
+---
+apiVersion: openclaw.enterprise.io/v1
+kind: OpenClawInstance
+metadata:
+  name: openclaw-full
+  namespace: openclaw-enterprise
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    connector-profile: full-suite
+spec:
+  deploymentMode: ha
+  replicas: 3
+  auth:
+    provider: "https://login.your-company.com/realms/openclaw"
+    clientId: "openclaw-full"
+    clientSecretRef:
+      name: openclaw-sso
+      key: client-secret
+  storage:
+    postgresSecretRef:
+      name: openclaw-postgres
+      key: connection-string
+    redisSecretRef:
+      name: openclaw-redis
+      key: connection-string
+  integrations:
+    # Gmail: Email triage, summarization, draft generation, auto-response
+    - type: gmail
+      enabled: true
+      config:
+        serviceAccountEmail: "openclaw@your-company.iam.gserviceaccount.com"
+        delegatedUser: "admin@your-company.com"
+        scopes: "https://www.googleapis.com/auth/gmail.readonly,https://www.googleapis.com/auth/gmail.send"
+
+    # Google Calendar: Meeting summaries, scheduling, conflict detection
+    - type: gcal
+      enabled: true
+      config:
+        serviceAccountEmail: "openclaw@your-company.iam.gserviceaccount.com"
+        delegatedUser: "admin@your-company.com"
+        scopes: "https://www.googleapis.com/auth/calendar"
+
+    # Jira: Task intelligence, work tracking, standup generation
+    - type: jira
+      enabled: true
+      config:
+        baseUrl: "https://your-company.atlassian.net"
+        apiTokenSecretRef: "openclaw-jira-token"
+        defaultProject: "ENG"
+
+    # GitHub: PR correlation, code review, commit tracking
+    - type: github
+      enabled: true
+      config:
+        appId: "12345"
+        installationId: "67890"
+        privateKeySecretRef: "openclaw-github-app-key"
+        organization: "your-company"
+
+    # Google Drive: Document monitoring, knowledge extraction, consistency checks
+    - type: gdrive
+      enabled: true
+      config:
+        serviceAccountEmail: "openclaw@your-company.iam.gserviceaccount.com"
+        delegatedUser: "admin@your-company.com"
+        sharedDriveId: "0ABcDeFgHiJkLmNoPq"

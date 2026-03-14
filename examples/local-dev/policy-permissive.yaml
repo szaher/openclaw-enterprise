@@ -1,0 +1,88 @@
+# Local Development: Permissive Policies
+# Relaxed policies for local development and testing. These policies allow
+# most operations without approval to speed up development iteration.
+#
+# WARNING: These policies are NOT suitable for production. They exist solely
+# to reduce friction during local development and testing.
+#
+# Usage: kubectl apply -f policy-permissive.yaml
+---
+apiVersion: openclaw.enterprise.io/v1
+kind: PolicyBundle
+metadata:
+  name: dev-permissive
+  namespace: openclaw-enterprise
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    environment: development
+spec:
+  policies:
+    - scope: enterprise
+      domain: models
+      name: dev-allow-all-models
+      content: |
+        package openclaw.enterprise.models
+
+        # Development: allow all models
+        default allow_model = true
+
+    - scope: enterprise
+      domain: actions
+      name: dev-auto-approve-all
+      content: |
+        package openclaw.enterprise.actions
+
+        # Development: auto-approve everything except deletes
+        default autonomy_level = "auto"
+
+        autonomy_level = "approve" {
+          input.action.type == "delete"
+        }
+
+    - scope: enterprise
+      domain: integrations
+      name: dev-allow-all-connectors
+      content: |
+        package openclaw.enterprise.integrations
+
+        # Development: allow all connectors
+        default allow_connector = true
+
+    - scope: enterprise
+      domain: agent-to-agent
+      name: dev-allow-all-ocip
+      content: |
+        package openclaw.enterprise.ocip
+
+        # Development: allow all OCIP messages
+        default allow_ocip_message = true
+
+    - scope: enterprise
+      domain: features
+      name: dev-allow-all-features
+      content: |
+        package openclaw.enterprise.features
+
+        # Development: allow all features
+        default allow_feature = true
+
+    - scope: enterprise
+      domain: data
+      name: dev-default-internal
+      content: |
+        package openclaw.enterprise.data
+
+        # Development: default classification is internal (less restrictive)
+        default data_classification = "internal"
+
+    - scope: enterprise
+      domain: audit
+      name: dev-minimal-retention
+      content: |
+        package openclaw.enterprise.audit
+
+        # Development: minimal retention (30 days)
+        default retention_days = 30
+
+        # Allow all exports in dev
+        default allow_audit_export = true

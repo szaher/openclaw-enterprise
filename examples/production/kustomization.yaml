@@ -1,0 +1,16 @@
+# Production: Kustomization
+# Applies all production resources in the correct order.
+# Review and customize secrets before applying.
+#
+# Usage: kubectl apply -k examples/production/
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - secrets.yaml
+  - instance-ha.yaml
+  - policy-enterprise.yaml
+  - ingress.yaml
+  - networkpolicy.yaml

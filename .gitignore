@@ -38,6 +38,8 @@ coverage/
 *.test
 *.out
 *.prof
+operator/manager
+operator/bin/
 
 # Kubernetes
 *.secret.yaml
@@ -48,3 +50,6 @@ kubeconfig*
 # Temporary
 *.tmp
 tmp/
+
+# Kind
+kind-config.yaml

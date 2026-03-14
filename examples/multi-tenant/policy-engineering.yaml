@@ -1,0 +1,116 @@
+# Multi-Tenant: Engineering Policies
+# More permissive policies for the engineering team. Engineers get broader
+# autonomy for code-related actions and access to all dev-oriented features.
+#
+# Usage: kubectl apply -f policy-engineering.yaml
+---
+apiVersion: openclaw.enterprise.io/v1
+kind: PolicyBundle
+metadata:
+  name: policy-engineering
+  namespace: openclaw-engineering
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    tenant: engineering
+spec:
+  policies:
+    - scope: org
+      domain: actions
+      name: engineering-autonomy
+      content: |
+        package openclaw.enterprise.actions
+
+        default autonomy_level = "approve"
+
+        # Engineers can auto-read from all internal sources
+        autonomy_level = "auto" {
+          input.action.type == "read"
+        }
+
+        # Auto-approve code search and listing
+        autonomy_level = "auto" {
+          input.action.type in {"search", "list", "summarize"}
+        }
+
+        # Auto-approve creating draft PRs and branch operations
+        autonomy_level = "auto" {
+          input.action.type == "create"
+          input.action.resource in {"branch", "draft-pr", "comment"}
+        }
+
+        # Approve for ticket creation and updates
+        autonomy_level = "approve" {
+          input.action.type in {"create", "update"}
+          input.action.resource in {"ticket", "issue", "pr"}
+        }
+
+        # Block destructive operations
+        autonomy_level = "block" {
+          input.action.type == "delete"
+        }
+
+        autonomy_level = "block" {
+          input.action.type in {"grant", "revoke", "modify-permissions"}
+        }
+
+    - scope: org
+      domain: features
+      name: engineering-features
+      content: |
+        package openclaw.enterprise.features
+
+        default allow_feature = false
+
+        # Engineering gets access to all tier 1 and tier 2 features
+        allow_feature {
+          input.feature.name in {
+            "task-intelligence",
+            "work-tracking",
+            "visualization",
+            "audit-log-view",
+            "connector-read",
+            "auto-response",
+            "org-intelligence",
+            "briefing-generation",
+            "connector-write",
+            "custom-dashboards",
+          }
+          input.user.authenticated == true
+        }
+
+        # Engineering gets experimental features opt-in
+        allow_feature {
+          input.feature.name in {
+            "predictive-task-scoring",
+            "auto-response-v2",
+          }
+          input.user.opted_in == true
+        }
+
+    - scope: org
+      domain: models
+      name: engineering-models
+      content: |
+        package openclaw.enterprise.models
+
+        default allow_model = false
+
+        # Engineers can use internal models for all data
+        allow_model {
+          input.model.provider == "internal"
+        }
+
+        # Engineers can use external models for code-related tasks
+        # with public/internal data
+        allow_model {
+          input.model.provider == "external"
+          input.data.classification in {"public", "internal"}
+        }
+
+        # Allow external code-specific models for confidential code
+        allow_model {
+          input.model.provider == "external"
+          input.model.capabilities[_] == "code"
+          input.data.classification == "confidential"
+          input.data.type == "source-code"
+        }

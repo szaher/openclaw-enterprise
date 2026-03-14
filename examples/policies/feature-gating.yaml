@@ -1,0 +1,98 @@
+# Policy Example: Feature Gating by Scope
+# Controls access to platform features based on user role, team membership,
+# and organizational scope. Uses a tiered approach where enterprise policies
+# set the baseline and narrower scopes can further restrict (but not widen).
+#
+# Use this when you need to:
+#   - Roll out features gradually by role or team
+#   - Restrict advanced features to licensed/authorized users
+#   - Gate experimental features behind feature flags
+#
+# Usage: kubectl apply -f feature-gating.yaml
+---
+apiVersion: openclaw.enterprise.io/v1
+kind: PolicyBundle
+metadata:
+  name: feature-gating
+  namespace: openclaw-enterprise
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    policy-domain: features
+spec:
+  policies:
+    - scope: enterprise
+      domain: features
+      name: feature-access-rules
+      content: |
+        package openclaw.enterprise.features
+
+        default allow_feature = false
+
+        # --- Tier 1: Available to all authenticated users ---
+        allow_feature {
+          input.feature.name in tier1_features
+          input.user.authenticated == true
+        }
+
+        tier1_features := {
+          "task-intelligence",
+          "work-tracking",
+          "visualization",
+          "audit-log-view",
+          "connector-read",
+        }
+
+        # --- Tier 2: Power users and above ---
+        allow_feature {
+          input.feature.name in tier2_features
+          input.user.role in {"admin", "power-user", "manager"}
+        }
+
+        tier2_features := {
+          "auto-response",
+          "org-intelligence",
+          "briefing-generation",
+          "connector-write",
+          "custom-dashboards",
+        }
+
+        # --- Tier 3: Admins only ---
+        allow_feature {
+          input.feature.name in tier3_features
+          input.user.role == "admin"
+        }
+
+        tier3_features := {
+          "policy-management",
+          "audit-export",
+          "user-administration",
+          "instance-configuration",
+          "connector-management",
+          "integration-setup",
+        }
+
+        # --- Experimental features: Opt-in with admin approval ---
+        allow_feature {
+          input.feature.name in experimental_features
+          input.user.opted_in == true
+          input.feature.approved_by_admin == true
+        }
+
+        experimental_features := {
+          "auto-response-v2",
+          "predictive-task-scoring",
+          "cross-org-intelligence",
+        }
+
+        # --- Deny rules ---
+        deny_feature[msg] {
+          input.feature.name in tier3_features
+          input.user.role != "admin"
+          msg := sprintf("Feature '%s' requires admin role (current role: %s)", [input.feature.name, input.user.role])
+        }
+
+        deny_feature[msg] {
+          input.feature.name in experimental_features
+          not input.user.opted_in
+          msg := sprintf("Feature '%s' is experimental and requires opt-in", [input.feature.name])
+        }

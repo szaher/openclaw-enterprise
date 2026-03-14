@@ -1,0 +1,98 @@
+# Policy Example: Audit Log Retention
+# Defines retention periods for different categories of audit events and
+# controls who can export audit data. Audit logs are append-only; deletion
+# is always denied.
+#
+# Use this when you need to:
+#   - Meet compliance requirements for log retention (SOC2, GDPR, HIPAA)
+#   - Control audit log export permissions
+#   - Define different retention periods by event severity
+#
+# Usage: kubectl apply -f audit-retention.yaml
+---
+apiVersion: openclaw.enterprise.io/v1
+kind: PolicyBundle
+metadata:
+  name: audit-retention
+  namespace: openclaw-enterprise
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    policy-domain: audit
+spec:
+  policies:
+    - scope: enterprise
+      domain: audit
+      name: retention-and-export
+      content: |
+        package openclaw.enterprise.audit
+
+        # Default retention: 1 year (365 days)
+        default retention_days = 365
+
+        # Security events: 7 years (regulatory compliance)
+        retention_days = 2555 {
+          input.event.category == "security"
+        }
+
+        # Authentication events: 5 years
+        retention_days = 1825 {
+          input.event.category == "authentication"
+        }
+
+        # Policy evaluation events: 3 years
+        retention_days = 1095 {
+          input.event.category == "policy-evaluation"
+        }
+
+        # Admin actions: 3 years
+        retention_days = 1095 {
+          input.event.category == "admin"
+        }
+
+        # Data access events: 2 years
+        retention_days = 730 {
+          input.event.category == "data-access"
+        }
+
+        # User activity: 1 year
+        retention_days = 365 {
+          input.event.category == "user-activity"
+        }
+
+        # Agent actions: 1 year
+        retention_days = 365 {
+          input.event.category == "agent-action"
+        }
+
+        # --- Export controls ---
+        default allow_audit_export = false
+
+        # Only admins can export audit logs
+        allow_audit_export {
+          input.user.role == "admin"
+          input.export.reason != ""
+          input.export.format in {"json", "csv", "parquet"}
+        }
+
+        # Compliance officers can export compliance-related events
+        allow_audit_export {
+          input.user.role == "compliance-officer"
+          input.export.category in {"security", "authentication", "policy-evaluation"}
+          input.export.reason != ""
+        }
+
+        deny_audit_export[msg] {
+          not input.export.reason
+          msg := "Audit export requires a documented business reason"
+        }
+
+        deny_audit_export[msg] {
+          input.export.date_range_days > 365
+          not input.user.role == "admin"
+          msg := "Non-admin users cannot export more than 1 year of audit data at once"
+        }
+
+        # Audit logs are append-only — block all delete operations
+        deny_audit_delete[msg] {
+          msg := "Audit logs are append-only and cannot be deleted or modified"
+        }

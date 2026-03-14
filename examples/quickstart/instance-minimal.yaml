@@ -1,0 +1,34 @@
+# Quickstart: Minimal OpenClawInstance
+# The simplest possible deployment — single mode, 1 replica, no connectors.
+# Good for evaluation, testing, and getting familiar with the platform.
+#
+# Prerequisites:
+#   - Namespaces created (namespace.yaml)
+#   - Secrets populated with real values (secrets.yaml)
+#   - OpenClaw Enterprise operator installed in openclaw-system
+#
+# Usage: kubectl apply -f instance-minimal.yaml
+---
+apiVersion: openclaw.enterprise.io/v1
+kind: OpenClawInstance
+metadata:
+  name: openclaw
+  namespace: openclaw-enterprise
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+spec:
+  deploymentMode: single
+  replicas: 1
+  auth:
+    provider: "https://accounts.google.com"
+    clientId: "your-client-id.apps.googleusercontent.com"
+    clientSecretRef:
+      name: openclaw-sso
+      key: client-secret
+  storage:
+    postgresSecretRef:
+      name: openclaw-postgres
+      key: connection-string
+    redisSecretRef:
+      name: openclaw-redis
+      key: connection-string

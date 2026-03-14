@@ -1,0 +1,122 @@
+# Policy Hierarchy: User-Level Override (Admin User)
+# The narrowest scope — applies to a specific user. Even admin users are
+# subject to the hierarchy; this policy can grant admin-specific features
+# but cannot exceed the boundaries set by enterprise/org/team policies.
+#
+# Full hierarchy:
+#   enterprise > org:engineering > team:platform > user:admin (this file)
+#
+# Use case: Grant a specific platform team admin access to policy management
+# and audit export features, while still respecting all higher-level
+# action and model restrictions.
+#
+# Usage: kubectl apply -f user-admin.yaml
+---
+apiVersion: openclaw.enterprise.io/v1
+kind: PolicyBundle
+metadata:
+  name: user-admin-jdoe
+  namespace: openclaw-engineering
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    policy-tier: user
+    org: engineering
+    team: platform
+    user: jdoe
+spec:
+  policies:
+    - scope: user
+      domain: features
+      name: user-jdoe-features
+      content: |
+        package openclaw.enterprise.features
+
+        default allow_feature = false
+
+        # Admin user gets all features available to the team
+        allow_feature {
+          input.user.id == "jdoe@your-company.com"
+          input.feature.name in {
+            "task-intelligence",
+            "work-tracking",
+            "visualization",
+            "audit-log-view",
+            "connector-read",
+            "auto-response",
+            "org-intelligence",
+            "briefing-generation",
+            "connector-write",
+            "custom-dashboards",
+            "predictive-task-scoring",
+            "auto-response-v2",
+          }
+        }
+
+        # Admin-specific features granted at user level
+        allow_feature {
+          input.user.id == "jdoe@your-company.com"
+          input.user.role == "admin"
+          input.feature.name in {
+            "policy-management",
+            "audit-export",
+            "user-administration",
+            "instance-configuration",
+            "connector-management",
+            "integration-setup",
+          }
+        }
+
+    - scope: user
+      domain: audit
+      name: user-jdoe-audit
+      content: |
+        package openclaw.enterprise.audit
+
+        # This admin user can export audit logs with documented reason
+        allow_audit_export {
+          input.user.id == "jdoe@your-company.com"
+          input.user.role == "admin"
+          input.export.reason != ""
+        }
+
+        # Even admin cannot delete audit logs (enterprise baseline enforced)
+        deny_audit_delete[msg] {
+          msg := "Audit logs are append-only and cannot be deleted"
+        }
+
+    - scope: user
+      domain: actions
+      name: user-jdoe-actions
+      content: |
+        package openclaw.enterprise.actions
+
+        default autonomy_level = "approve"
+
+        # Admin inherits all auto-approved reads from higher scopes
+        autonomy_level = "auto" {
+          input.user.id == "jdoe@your-company.com"
+          input.action.type == "read"
+        }
+
+        autonomy_level = "auto" {
+          input.user.id == "jdoe@your-company.com"
+          input.action.type in {"search", "list", "summarize"}
+        }
+
+        # Admin can auto-approve user administration reads
+        autonomy_level = "auto" {
+          input.user.id == "jdoe@your-company.com"
+          input.action.type == "read"
+          input.action.resource in {"user", "role", "policy"}
+        }
+
+        # Admin writes still require approval (cannot exceed enterprise baseline)
+        autonomy_level = "approve" {
+          input.user.id == "jdoe@your-company.com"
+          input.action.type in {"write", "create", "update"}
+        }
+
+        # Destructive actions still blocked (enterprise baseline)
+        autonomy_level = "block" {
+          input.action.type in {"delete", "grant", "revoke"}
+        }

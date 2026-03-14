@@ -1,0 +1,21 @@
+# Quickstart: Namespace Setup
+# Creates the required namespaces for OpenClaw Enterprise.
+# Apply this first before any other resources.
+#
+# Usage: kubectl apply -f namespace.yaml
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openclaw-system
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    app.kubernetes.io/managed-by: openclaw-operator
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openclaw-enterprise
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    app.kubernetes.io/managed-by: openclaw-operator

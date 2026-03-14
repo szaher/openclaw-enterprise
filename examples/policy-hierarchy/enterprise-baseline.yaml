@@ -1,0 +1,90 @@
+# Policy Hierarchy: Enterprise Baseline
+# The broadest scope — defines the absolute boundaries that no lower-level
+# policy can exceed. This is the security floor for the entire organization.
+#
+# Hierarchy: enterprise > org > team > user
+# Lower scopes can narrow (restrict) but never widen (permit) beyond the
+# enterprise baseline.
+#
+# Usage: kubectl apply -f enterprise-baseline.yaml
+---
+apiVersion: openclaw.enterprise.io/v1
+kind: PolicyBundle
+metadata:
+  name: enterprise-baseline
+  namespace: openclaw-enterprise
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    policy-tier: enterprise
+spec:
+  policies:
+    - scope: enterprise
+      domain: models
+      name: enterprise-model-baseline
+      content: |
+        package openclaw.enterprise.models
+
+        default allow_model = false
+
+        # Internal models allowed for all data
+        allow_model {
+          input.model.provider == "internal"
+        }
+
+        # External models only for public/internal data
+        allow_model {
+          input.model.provider == "external"
+          input.data.classification in {"public", "internal"}
+        }
+
+    - scope: enterprise
+      domain: actions
+      name: enterprise-action-baseline
+      content: |
+        package openclaw.enterprise.actions
+
+        default autonomy_level = "block"
+
+        autonomy_level = "auto" {
+          input.action.type == "read"
+        }
+
+        autonomy_level = "auto" {
+          input.action.type in {"search", "list", "summarize"}
+        }
+
+        autonomy_level = "approve" {
+          input.action.type in {"write", "create", "update", "send"}
+        }
+
+        autonomy_level = "block" {
+          input.action.type in {"delete", "grant", "revoke"}
+        }
+
+    - scope: enterprise
+      domain: integrations
+      name: enterprise-integration-baseline
+      content: |
+        package openclaw.enterprise.integrations
+
+        default allow_connector = false
+
+        allow_connector {
+          input.connector.enabled == true
+          input.user.authenticated == true
+        }
+
+    - scope: enterprise
+      domain: data
+      name: enterprise-data-baseline
+      content: |
+        package openclaw.enterprise.data
+
+        default data_classification = "confidential"
+
+        # Enterprise rule: restricted data never leaves internal systems
+        deny_data_transfer[msg] {
+          input.data.classification == "restricted"
+          input.destination.type == "external"
+          msg := "Restricted data cannot be transferred to external systems"
+        }

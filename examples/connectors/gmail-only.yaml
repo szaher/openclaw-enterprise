@@ -1,0 +1,44 @@
+# Connector Example: Gmail Only
+# OpenClawInstance with only the Gmail connector enabled. Suitable for teams
+# that primarily need AI-powered email management (triage, summarization,
+# draft generation).
+#
+# Prerequisites:
+#   - Google Workspace admin has created a service account
+#   - Domain-wide delegation enabled for the service account
+#   - Gmail API scopes authorized in Google Admin Console
+#
+# Usage: kubectl apply -f gmail-only.yaml
+---
+apiVersion: openclaw.enterprise.io/v1
+kind: OpenClawInstance
+metadata:
+  name: openclaw-gmail
+  namespace: openclaw-enterprise
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    connector-profile: gmail-only
+spec:
+  deploymentMode: single
+  replicas: 1
+  auth:
+    provider: "https://accounts.google.com"
+    clientId: "your-client-id.apps.googleusercontent.com"
+    clientSecretRef:
+      name: openclaw-sso
+      key: client-secret
+  storage:
+    postgresSecretRef:
+      name: openclaw-postgres
+      key: connection-string
+    redisSecretRef:
+      name: openclaw-redis
+      key: connection-string
+  integrations:
+    - type: gmail
+      enabled: true
+      config:
+        serviceAccountEmail: "openclaw@your-company.iam.gserviceaccount.com"
+        delegatedUser: "admin@your-company.com"
+        # Scopes: readonly for triage/summary, send for drafts/replies
+        scopes: "https://www.googleapis.com/auth/gmail.readonly,https://www.googleapis.com/auth/gmail.send"

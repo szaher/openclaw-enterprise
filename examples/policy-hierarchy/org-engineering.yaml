@@ -1,0 +1,109 @@
+# Policy Hierarchy: Org-Level Override (Engineering)
+# Narrows the enterprise baseline for the engineering organization.
+# Engineers get slightly more autonomy for code operations but cannot
+# exceed the enterprise baseline boundaries.
+#
+# Example narrowing:
+#   - Enterprise allows external models for public/internal data
+#   - Org allows external code models for confidential source code (still within enterprise bounds
+#     since enterprise allows internal models for all data)
+#   - Enterprise allows "approve" for write actions
+#   - Org sets "auto" for code comments/drafts (narrower scope of write)
+#
+# Usage: kubectl apply -f org-engineering.yaml
+---
+apiVersion: openclaw.enterprise.io/v1
+kind: PolicyBundle
+metadata:
+  name: org-engineering
+  namespace: openclaw-engineering
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    policy-tier: org
+    org: engineering
+spec:
+  policies:
+    - scope: org
+      domain: actions
+      name: org-engineering-actions
+      content: |
+        package openclaw.enterprise.actions
+
+        default autonomy_level = "approve"
+
+        # Inherit enterprise auto-reads
+        autonomy_level = "auto" {
+          input.action.type == "read"
+        }
+
+        autonomy_level = "auto" {
+          input.action.type in {"search", "list", "summarize"}
+        }
+
+        # Org narrowing: auto-approve low-risk code operations
+        autonomy_level = "auto" {
+          input.action.type == "create"
+          input.action.resource in {"comment", "draft-pr", "branch"}
+        }
+
+        # Everything else requires approval (narrower than enterprise
+        # which also allows approve for send/write generically)
+        autonomy_level = "approve" {
+          input.action.type in {"write", "create", "update", "send"}
+        }
+
+        # Maintain enterprise block on destructive operations
+        autonomy_level = "block" {
+          input.action.type in {"delete", "grant", "revoke"}
+        }
+
+    - scope: org
+      domain: models
+      name: org-engineering-models
+      content: |
+        package openclaw.enterprise.models
+
+        default allow_model = false
+
+        # Internal models always allowed (same as enterprise)
+        allow_model {
+          input.model.provider == "internal"
+        }
+
+        # External models for public/internal (same as enterprise)
+        allow_model {
+          input.model.provider == "external"
+          input.data.classification in {"public", "internal"}
+        }
+
+        # Org-specific: allow code-specialized external models for
+        # confidential source code (still uses internal for restricted)
+        allow_model {
+          input.model.provider == "external"
+          input.model.capabilities[_] == "code"
+          input.data.classification == "confidential"
+          input.data.type == "source-code"
+        }
+
+    - scope: org
+      domain: integrations
+      name: org-engineering-integrations
+      content: |
+        package openclaw.enterprise.integrations
+
+        default allow_connector = false
+
+        # Engineering uses GitHub and Jira primarily
+        allow_connector {
+          input.connector.type in {"github", "jira"}
+          input.connector.enabled == true
+          input.user.authenticated == true
+        }
+
+        # Gmail read-only for engineering
+        allow_connector {
+          input.connector.type == "gmail"
+          input.connector.enabled == true
+          input.user.authenticated == true
+          input.action.type == "read"
+        }

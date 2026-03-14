@@ -1,0 +1,123 @@
+# Multi-Tenant: Sales Policies
+# More restrictive policies for the sales team. Sales users have limited
+# autonomy, no access to code repositories, and stricter data controls
+# around customer information.
+#
+# Usage: kubectl apply -f policy-sales.yaml
+---
+apiVersion: openclaw.enterprise.io/v1
+kind: PolicyBundle
+metadata:
+  name: policy-sales
+  namespace: openclaw-sales
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    tenant: sales
+spec:
+  policies:
+    - scope: org
+      domain: actions
+      name: sales-autonomy
+      content: |
+        package openclaw.enterprise.actions
+
+        default autonomy_level = "block"
+
+        # Sales can auto-read internal documents and CRM data
+        autonomy_level = "auto" {
+          input.action.type == "read"
+          input.action.source in {"gdrive", "gcal", "gmail"}
+        }
+
+        # Search and list are auto-approved
+        autonomy_level = "auto" {
+          input.action.type in {"search", "list"}
+        }
+
+        # Summarizing is auto-approved
+        autonomy_level = "auto" {
+          input.action.type == "summarize"
+        }
+
+        # Email drafts require approval
+        autonomy_level = "approve" {
+          input.action.type in {"draft", "send"}
+          input.action.resource == "email"
+        }
+
+        # Calendar operations require approval
+        autonomy_level = "approve" {
+          input.action.type in {"create", "update"}
+          input.action.resource == "calendar-event"
+        }
+
+        # Block all delete and permission operations
+        autonomy_level = "block" {
+          input.action.type == "delete"
+        }
+
+        autonomy_level = "block" {
+          input.action.type in {"grant", "revoke", "modify-permissions"}
+        }
+
+        # Block access to code-related resources
+        autonomy_level = "block" {
+          input.action.resource in {"pr", "branch", "commit", "repository"}
+        }
+
+    - scope: org
+      domain: features
+      name: sales-features
+      content: |
+        package openclaw.enterprise.features
+
+        default allow_feature = false
+
+        # Sales gets basic features only
+        allow_feature {
+          input.feature.name in {
+            "task-intelligence",
+            "work-tracking",
+            "visualization",
+            "audit-log-view",
+            "connector-read",
+            "briefing-generation",
+          }
+          input.user.authenticated == true
+        }
+
+        # Sales managers get auto-response for email
+        allow_feature {
+          input.feature.name == "auto-response"
+          input.user.role in {"admin", "manager"}
+        }
+
+    - scope: org
+      domain: data
+      name: sales-data-classification
+      content: |
+        package openclaw.enterprise.data
+
+        # All customer data is confidential by default for sales
+        default data_classification = "confidential"
+
+        # Customer PII is restricted
+        data_classification = "restricted" {
+          input.metadata.labels[_] == "customer-pii"
+        }
+
+        data_classification = "restricted" {
+          input.source.type == "crm"
+          regex.match(`\b\d{3}-\d{2}-\d{4}\b`, input.content)
+        }
+
+        # Internal sales docs are internal
+        data_classification = "internal" {
+          input.source.type == "gdrive"
+          input.metadata.folder in {"Sales Playbooks", "Internal Guides"}
+        }
+
+        # Marketing materials are public
+        data_classification = "public" {
+          input.metadata.labels[_] == "marketing"
+        }

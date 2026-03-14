@@ -1,0 +1,77 @@
+# Policy Example: Model Routing
+# Routes AI model requests based on data sensitivity. Ensures that confidential
+# and restricted data is only processed by internal (self-hosted) models, while
+# public and internal data can use faster external models.
+#
+# Use this when you need to:
+#   - Enforce data residency requirements for AI processing
+#   - Route sensitive workloads to on-premise models
+#   - Allow external models for non-sensitive tasks to reduce costs
+#
+# Usage: kubectl apply -f model-routing.yaml
+---
+apiVersion: openclaw.enterprise.io/v1
+kind: PolicyBundle
+metadata:
+  name: model-routing
+  namespace: openclaw-enterprise
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    policy-domain: models
+spec:
+  policies:
+    - scope: enterprise
+      domain: models
+      name: route-sensitive-to-internal
+      content: |
+        package openclaw.enterprise.models
+
+        default allow_model = false
+
+        # Internal models are always allowed
+        allow_model {
+          input.model.provider == "internal"
+        }
+
+        # External models allowed only for public and internal data
+        allow_model {
+          input.model.provider == "external"
+          input.data.classification in {"public", "internal"}
+        }
+
+        # Deny external models for sensitive data
+        deny_model[msg] {
+          input.model.provider == "external"
+          input.data.classification == "confidential"
+          msg := sprintf("Confidential data must use internal models, not '%s'", [input.model.name])
+        }
+
+        deny_model[msg] {
+          input.model.provider == "external"
+          input.data.classification == "restricted"
+          msg := sprintf("Restricted data is prohibited from external model '%s'", [input.model.name])
+        }
+
+        # Route to preferred model based on classification
+        preferred_model = "internal-llm-large" {
+          input.data.classification == "restricted"
+        }
+
+        preferred_model = "internal-llm" {
+          input.data.classification == "confidential"
+        }
+
+        preferred_model = "external-llm-fast" {
+          input.data.classification in {"public", "internal"}
+          input.task.type == "summarization"
+        }
+
+        preferred_model = "external-llm" {
+          input.data.classification in {"public", "internal"}
+        }
+
+        # Cost optimization: prefer smaller models for simple tasks
+        preferred_model = "internal-llm-small" {
+          input.task.type in {"classification", "extraction"}
+          input.data.classification in {"confidential", "restricted"}
+        }

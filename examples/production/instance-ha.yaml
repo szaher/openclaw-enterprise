@@ -1,0 +1,74 @@
+# Production: High-Availability OpenClawInstance
+# Full production deployment with HA mode, 3 replicas, all connectors enabled,
+# and custom image overrides for version pinning.
+#
+# Prerequisites:
+#   - Namespaces created (namespace.yaml)
+#   - Secrets sealed and applied (secrets.yaml)
+#   - OpenClaw Enterprise operator installed in openclaw-system
+#   - External PostgreSQL cluster (HA) provisioned
+#   - External Redis cluster (HA/Sentinel) provisioned
+#   - OIDC provider configured with redirect URIs
+#
+# Usage: kubectl apply -f instance-ha.yaml
+---
+apiVersion: openclaw.enterprise.io/v1
+kind: OpenClawInstance
+metadata:
+  name: openclaw-production
+  namespace: openclaw-enterprise
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    app.kubernetes.io/instance: production
+    environment: production
+spec:
+  deploymentMode: ha
+  replicas: 3
+  auth:
+    provider: "https://login.your-company.com/realms/openclaw"
+    clientId: "openclaw-enterprise-prod"
+    clientSecretRef:
+      name: openclaw-sso
+      key: client-secret
+  storage:
+    postgresSecretRef:
+      name: openclaw-postgres
+      key: connection-string
+    redisSecretRef:
+      name: openclaw-redis
+      key: connection-string
+  images:
+    gateway: "ghcr.io/szaher/openclaw-enterprise/gateway:v1.2.0"
+    opa: "ghcr.io/szaher/openclaw-enterprise/opa:v1.2.0"
+  integrations:
+    - type: gmail
+      enabled: true
+      config:
+        serviceAccountEmail: "openclaw@your-company.iam.gserviceaccount.com"
+        delegatedUser: "admin@your-company.com"
+        scopes: "https://www.googleapis.com/auth/gmail.readonly,https://www.googleapis.com/auth/gmail.send"
+    - type: gcal
+      enabled: true
+      config:
+        serviceAccountEmail: "openclaw@your-company.iam.gserviceaccount.com"
+        delegatedUser: "admin@your-company.com"
+        scopes: "https://www.googleapis.com/auth/calendar"
+    - type: jira
+      enabled: true
+      config:
+        baseUrl: "https://your-company.atlassian.net"
+        apiTokenSecretRef: "openclaw-jira-token"
+        defaultProject: "ENG"
+    - type: github
+      enabled: true
+      config:
+        appId: "12345"
+        installationId: "67890"
+        privateKeySecretRef: "openclaw-github-app-key"
+        organization: "your-company"
+    - type: gdrive
+      enabled: true
+      config:
+        serviceAccountEmail: "openclaw@your-company.iam.gserviceaccount.com"
+        delegatedUser: "admin@your-company.com"
+        sharedDriveId: "0ABcDeFgHiJkLmNoPq"

@@ -1,0 +1,317 @@
+# Production: Enterprise Policy Bundle
+# Comprehensive enterprise-wide policies covering all 7 policy domains.
+# These define the security baseline for the entire organization.
+# Org/team/user-level policies can narrow (but not widen) these rules.
+#
+# Domains covered:
+#   - models: Which AI models can be used and for what data classifications
+#   - actions: What actions agents can take autonomously vs. requiring approval
+#   - integrations: Which connectors are accessible and by whom
+#   - agent-to-agent: OCIP cross-org communication filtering
+#   - features: Feature gating by role and scope
+#   - data: Data classification and handling rules
+#   - audit: Audit log retention and export policies
+#
+# Usage: kubectl apply -f policy-enterprise.yaml
+---
+apiVersion: openclaw.enterprise.io/v1
+kind: PolicyBundle
+metadata:
+  name: enterprise-baseline
+  namespace: openclaw-enterprise
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    policy-tier: enterprise
+spec:
+  policies:
+    # --- Models Domain ---
+    - scope: enterprise
+      domain: models
+      name: model-routing-baseline
+      content: |
+        package openclaw.enterprise.models
+
+        # Default: allow internal models for all data
+        default allow_model = false
+
+        # Allow internal models for any classification
+        allow_model {
+          input.model.provider == "internal"
+        }
+
+        # Allow external models only for public/internal data
+        allow_model {
+          input.model.provider == "external"
+          input.data.classification in {"public", "internal"}
+        }
+
+        # Block external models for confidential/restricted data
+        deny_model[msg] {
+          input.model.provider == "external"
+          input.data.classification in {"confidential", "restricted"}
+          msg := sprintf("External model '%s' cannot process %s data", [input.model.name, input.data.classification])
+        }
+
+        # Preferred model routing
+        preferred_model = "internal-llm" {
+          input.data.classification in {"confidential", "restricted"}
+        }
+
+        preferred_model = "external-llm" {
+          input.data.classification in {"public", "internal"}
+        }
+
+    # --- Actions Domain ---
+    - scope: enterprise
+      domain: actions
+      name: action-autonomy-baseline
+      content: |
+        package openclaw.enterprise.actions
+
+        default autonomy_level = "block"
+
+        # Read operations are auto-approved
+        autonomy_level = "auto" {
+          input.action.type == "read"
+        }
+
+        # Internal write operations require human approval
+        autonomy_level = "approve" {
+          input.action.type == "write"
+          input.action.target == "internal"
+        }
+
+        # External write operations are blocked by default
+        autonomy_level = "block" {
+          input.action.type == "write"
+          input.action.target == "external"
+        }
+
+        # Delete operations always require approval
+        autonomy_level = "approve" {
+          input.action.type == "delete"
+        }
+
+        # Rate limiting: max 100 auto-approved actions per hour
+        rate_limit_exceeded {
+          input.action.hourly_count > 100
+        }
+
+    # --- Integrations Domain ---
+    - scope: enterprise
+      domain: integrations
+      name: integration-access-baseline
+      content: |
+        package openclaw.enterprise.integrations
+
+        default allow_connector = false
+
+        # Allow enabled connectors for authenticated users
+        allow_connector {
+          input.connector.enabled == true
+          input.user.authenticated == true
+        }
+
+        # Deny disabled connectors
+        deny_connector[msg] {
+          input.connector.enabled == false
+          msg := sprintf("Connector '%s' is disabled", [input.connector.type])
+        }
+
+        # Require MFA for write operations on external integrations
+        require_mfa {
+          input.action.type == "write"
+          input.connector.type in {"jira", "github", "gmail"}
+        }
+
+    # --- Agent-to-Agent Domain ---
+    - scope: enterprise
+      domain: agent-to-agent
+      name: ocip-filtering-baseline
+      content: |
+        package openclaw.enterprise.ocip
+
+        default allow_ocip_message = false
+
+        # Allow messages from trusted organizations
+        allow_ocip_message {
+          input.source.organization in data.trusted_organizations
+        }
+
+        # Allow messages within the same organization
+        allow_ocip_message {
+          input.source.organization == input.destination.organization
+        }
+
+        # Block messages with restricted data classification
+        deny_ocip_message[msg] {
+          input.envelope.data_classification == "restricted"
+          msg := "OCIP messages with restricted data classification are blocked"
+        }
+
+        # Require loop prevention headers
+        deny_ocip_message[msg] {
+          not input.envelope.headers["X-OCIP-Hop-Count"]
+          msg := "OCIP messages must include hop count header"
+        }
+
+        # Block messages exceeding hop limit
+        deny_ocip_message[msg] {
+          to_number(input.envelope.headers["X-OCIP-Hop-Count"]) > 5
+          msg := "OCIP message exceeded maximum hop count of 5"
+        }
+
+    # --- Features Domain ---
+    - scope: enterprise
+      domain: features
+      name: feature-gating-baseline
+      content: |
+        package openclaw.enterprise.features
+
+        default allow_feature = false
+
+        # Core features available to all authenticated users
+        allow_feature {
+          input.feature.name in {
+            "task-intelligence",
+            "work-tracking",
+            "audit-log-view"
+          }
+          input.user.authenticated == true
+        }
+
+        # Advanced features require specific roles
+        allow_feature {
+          input.feature.name == "auto-response"
+          input.user.role in {"admin", "power-user"}
+        }
+
+        allow_feature {
+          input.feature.name == "org-intelligence"
+          input.user.role in {"admin", "manager"}
+        }
+
+        # Admin-only features
+        allow_feature {
+          input.feature.name in {
+            "policy-management",
+            "audit-export",
+            "user-administration"
+          }
+          input.user.role == "admin"
+        }
+
+        # Visualization available to all
+        allow_feature {
+          input.feature.name == "visualization"
+          input.user.authenticated == true
+        }
+
+    # --- Data Domain ---
+    - scope: enterprise
+      domain: data
+      name: data-classification-baseline
+      content: |
+        package openclaw.enterprise.data
+
+        # Classification levels: public < internal < confidential < restricted
+        classification_order := {
+          "public": 0,
+          "internal": 1,
+          "confidential": 2,
+          "restricted": 3,
+        }
+
+        default data_classification = "confidential"
+
+        # Auto-classify based on content patterns
+        data_classification = "restricted" {
+          contains_pii(input.content)
+        }
+
+        data_classification = "restricted" {
+          contains_financial(input.content)
+        }
+
+        data_classification = "internal" {
+          input.source.type == "internal-doc"
+          not contains_pii(input.content)
+        }
+
+        data_classification = "public" {
+          input.source.type == "public-doc"
+        }
+
+        # Classification travels with data
+        output_classification = max_classification {
+          classifications := [c | c := input.sources[_].classification]
+          max_classification := max_by_order(classifications)
+        }
+
+        # Helper: check for PII patterns
+        contains_pii(content) {
+          regex.match(`\b\d{3}-\d{2}-\d{4}\b`, content)  # SSN
+        }
+
+        contains_pii(content) {
+          regex.match(`\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b`, content)  # Email
+        }
+
+        contains_financial(content) {
+          regex.match(`\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b`, content)  # Credit card
+        }
+
+        max_by_order(classifications) = result {
+          orders := [classification_order[c] | c := classifications[_]]
+          max_order := max(orders)
+          some c
+          classification_order[c] == max_order
+          result := c
+        }
+
+    # --- Audit Domain ---
+    - scope: enterprise
+      domain: audit
+      name: audit-retention-baseline
+      content: |
+        package openclaw.enterprise.audit
+
+        # Retention periods in days
+        default retention_days = 365
+
+        # Security events retained for 7 years (2555 days)
+        retention_days = 2555 {
+          input.event.category == "security"
+        }
+
+        # Compliance events retained for 5 years (1825 days)
+        retention_days = 1825 {
+          input.event.category == "compliance"
+        }
+
+        # Admin actions retained for 3 years (1095 days)
+        retention_days = 1095 {
+          input.event.category == "admin"
+        }
+
+        # User activity retained for 1 year
+        retention_days = 365 {
+          input.event.category == "user-activity"
+        }
+
+        # Allow export only for admins
+        allow_audit_export {
+          input.user.role == "admin"
+        }
+
+        # Require reason for audit exports
+        deny_audit_export[msg] {
+          input.user.role == "admin"
+          not input.export.reason
+          msg := "Audit export requires a documented reason"
+        }
+
+        # Audit log is append-only; deny any delete operation
+        deny_audit_delete[msg] {
+          msg := "Audit logs are append-only and cannot be deleted"
+        }

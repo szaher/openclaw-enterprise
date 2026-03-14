@@ -1,0 +1,111 @@
+# Policy Example: Action Autonomy Levels
+# Defines what actions AI agents can take autonomously, which require human
+# approval, and which are blocked entirely. Follows the principle of least
+# privilege with escalating controls for higher-risk operations.
+#
+# Autonomy levels:
+#   - auto: Action proceeds without human intervention
+#   - approve: Action queued for human approval before execution
+#   - block: Action is denied entirely
+#
+# Use this when you need to:
+#   - Control what agents can do without human oversight
+#   - Set up approval workflows for sensitive operations
+#   - Block dangerous actions entirely
+#
+# Usage: kubectl apply -f action-autonomy.yaml
+---
+apiVersion: openclaw.enterprise.io/v1
+kind: PolicyBundle
+metadata:
+  name: action-autonomy
+  namespace: openclaw-enterprise
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    policy-domain: actions
+spec:
+  policies:
+    - scope: enterprise
+      domain: actions
+      name: autonomy-levels
+      content: |
+        package openclaw.enterprise.actions
+
+        default autonomy_level = "block"
+
+        # --- Auto-approved actions (low risk) ---
+
+        # Reading internal data
+        autonomy_level = "auto" {
+          input.action.type == "read"
+          input.action.target == "internal"
+        }
+
+        # Searching and listing
+        autonomy_level = "auto" {
+          input.action.type in {"search", "list"}
+        }
+
+        # Generating summaries from existing data
+        autonomy_level = "auto" {
+          input.action.type == "summarize"
+        }
+
+        # --- Approval-required actions (medium risk) ---
+
+        # Writing to internal systems
+        autonomy_level = "approve" {
+          input.action.type == "write"
+          input.action.target == "internal"
+        }
+
+        # Sending messages (email, chat)
+        autonomy_level = "approve" {
+          input.action.type == "send"
+        }
+
+        # Creating tickets or issues
+        autonomy_level = "approve" {
+          input.action.type == "create"
+          input.action.resource in {"ticket", "issue", "task"}
+        }
+
+        # Updating existing records
+        autonomy_level = "approve" {
+          input.action.type == "update"
+        }
+
+        # Reading external data
+        autonomy_level = "approve" {
+          input.action.type == "read"
+          input.action.target == "external"
+        }
+
+        # --- Blocked actions (high risk) ---
+
+        # Deleting anything
+        autonomy_level = "block" {
+          input.action.type == "delete"
+        }
+
+        # Writing to external systems
+        autonomy_level = "block" {
+          input.action.type == "write"
+          input.action.target == "external"
+        }
+
+        # Modifying permissions or access controls
+        autonomy_level = "block" {
+          input.action.type in {"grant", "revoke", "modify-permissions"}
+        }
+
+        # --- Rate limiting ---
+        rate_limit_exceeded {
+          input.action.autonomy_level == "auto"
+          input.action.hourly_count > 100
+        }
+
+        rate_limit_exceeded {
+          input.action.autonomy_level == "approve"
+          input.action.daily_count > 50
+        }

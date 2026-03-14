@@ -1,0 +1,119 @@
+# Multi-Tenant: Path-Based Ingress Routing
+# Routes traffic to different tenant instances based on URL path or subdomain.
+# Each tenant gets its own gateway service behind a shared ingress.
+#
+# Prerequisites:
+#   - Nginx Ingress Controller installed
+#   - cert-manager installed with a ClusterIssuer
+#   - DNS wildcard or individual records for each tenant subdomain
+#
+# Usage: kubectl apply -f ingress-multi-tenant.yaml
+---
+# Option A: Subdomain-based routing (recommended for isolation)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: openclaw-engineering-ingress
+  namespace: openclaw-engineering
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    tenant: engineering
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Frame-Options: DENY";
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains";
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - eng.openclaw.your-company.com
+      secretName: openclaw-eng-tls
+  rules:
+    - host: eng.openclaw.your-company.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: openclaw-engineering-gateway
+                port:
+                  number: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: openclaw-sales-ingress
+  namespace: openclaw-sales
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    tenant: sales
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Frame-Options: DENY";
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains";
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - sales.openclaw.your-company.com
+      secretName: openclaw-sales-tls
+  rules:
+    - host: sales.openclaw.your-company.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: openclaw-sales-gateway
+                port:
+                  number: 8080
+---
+# Option B: Path-based routing (shared domain, simpler DNS)
+# Uncomment this and comment out the subdomain-based ingresses above
+# if you prefer path-based routing on a single domain.
+#
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: openclaw-multi-tenant
+#   namespace: openclaw-enterprise
+#   annotations:
+#     nginx.ingress.kubernetes.io/ssl-redirect: "true"
+#     nginx.ingress.kubernetes.io/rewrite-target: /$2
+#     cert-manager.io/cluster-issuer: "letsencrypt-prod"
+# spec:
+#   ingressClassName: nginx
+#   tls:
+#     - hosts:
+#         - openclaw.your-company.com
+#       secretName: openclaw-tls
+#   rules:
+#     - host: openclaw.your-company.com
+#       http:
+#         paths:
+#           - path: /engineering(/|$)(.*)
+#             pathType: ImplementationSpecific
+#             backend:
+#               service:
+#                 name: openclaw-engineering-gateway
+#                 port:
+#                   number: 8080
+#           - path: /sales(/|$)(.*)
+#             pathType: ImplementationSpecific
+#             backend:
+#               service:
+#                 name: openclaw-sales-gateway
+#                 port:
+#                   number: 8080

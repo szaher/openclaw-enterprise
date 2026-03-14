@@ -1,0 +1,85 @@
+# Multi-Tenant: Engineering Tenant Instance
+# OpenClawInstance for the engineering department. Includes GitHub and Jira
+# connectors for development workflows. Runs in HA mode for reliability.
+#
+# Usage: kubectl apply -f tenant-engineering.yaml
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openclaw-engineering
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    tenant: engineering
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: openclaw-postgres
+  namespace: openclaw-engineering
+type: Opaque
+stringData:
+  connection-string: "postgres://openclaw_eng:CHANGE_ME@postgres.example.com:5432/openclaw_engineering?sslmode=require"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: openclaw-redis
+  namespace: openclaw-engineering
+type: Opaque
+stringData:
+  connection-string: "redis://:CHANGE_ME@redis.example.com:6379/1"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: openclaw-sso
+  namespace: openclaw-engineering
+type: Opaque
+stringData:
+  client-secret: "CHANGE_ME_ENGINEERING_SSO_SECRET"
+---
+apiVersion: openclaw.enterprise.io/v1
+kind: OpenClawInstance
+metadata:
+  name: openclaw-engineering
+  namespace: openclaw-engineering
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    tenant: engineering
+spec:
+  deploymentMode: ha
+  replicas: 3
+  auth:
+    provider: "https://login.your-company.com/realms/openclaw"
+    clientId: "openclaw-engineering"
+    clientSecretRef:
+      name: openclaw-sso
+      key: client-secret
+  storage:
+    postgresSecretRef:
+      name: openclaw-postgres
+      key: connection-string
+    redisSecretRef:
+      name: openclaw-redis
+      key: connection-string
+  integrations:
+    - type: github
+      enabled: true
+      config:
+        appId: "12345"
+        installationId: "67890"
+        privateKeySecretRef: "openclaw-github-app-key"
+        organization: "your-company"
+    - type: jira
+      enabled: true
+      config:
+        baseUrl: "https://your-company.atlassian.net"
+        apiTokenSecretRef: "openclaw-jira-token"
+        defaultProject: "ENG"
+    - type: gmail
+      enabled: true
+      config:
+        serviceAccountEmail: "openclaw-eng@your-company.iam.gserviceaccount.com"
+        delegatedUser: "eng-team@your-company.com"
+        scopes: "https://www.googleapis.com/auth/gmail.readonly"

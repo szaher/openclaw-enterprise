@@ -1,0 +1,115 @@
+# Policy Example: Data Classification Rules
+# Automatically classifies data based on content, source, and context.
+# Classification travels with data — when multiple sources are combined,
+# the output inherits the highest classification level.
+#
+# Classification levels (ascending sensitivity):
+#   - public: Publicly available information
+#   - internal: Internal company information, not sensitive
+#   - confidential: Sensitive business data, limited access
+#   - restricted: Highly sensitive data (PII, financial, legal), strict controls
+#
+# Use this when you need to:
+#   - Auto-classify data flowing through the system
+#   - Enforce data handling rules based on sensitivity
+#   - Ensure classification propagates correctly through processing pipelines
+#
+# Usage: kubectl apply -f data-classification.yaml
+---
+apiVersion: openclaw.enterprise.io/v1
+kind: PolicyBundle
+metadata:
+  name: data-classification
+  namespace: openclaw-enterprise
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    policy-domain: data
+spec:
+  policies:
+    - scope: enterprise
+      domain: data
+      name: classification-rules
+      content: |
+        package openclaw.enterprise.data
+
+        classification_order := {
+          "public": 0,
+          "internal": 1,
+          "confidential": 2,
+          "restricted": 3,
+        }
+
+        default data_classification = "confidential"
+
+        # --- Restricted: PII and financial data ---
+        data_classification = "restricted" {
+          regex.match(`\b\d{3}-\d{2}-\d{4}\b`, input.content)  # SSN pattern
+        }
+
+        data_classification = "restricted" {
+          regex.match(`\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b`, input.content)  # Credit card
+        }
+
+        data_classification = "restricted" {
+          input.metadata.labels[_] == "pii"
+        }
+
+        data_classification = "restricted" {
+          input.metadata.labels[_] == "financial"
+        }
+
+        data_classification = "restricted" {
+          input.source.type == "hr-system"
+        }
+
+        # --- Confidential: Business-sensitive ---
+        data_classification = "confidential" {
+          input.source.type in {"crm", "erp", "internal-api"}
+        }
+
+        data_classification = "confidential" {
+          input.metadata.labels[_] == "business-sensitive"
+        }
+
+        # --- Internal: Company-internal, not sensitive ---
+        data_classification = "internal" {
+          input.source.type in {"wiki", "internal-doc", "chat"}
+          not contains_sensitive(input)
+        }
+
+        # --- Public: Explicitly marked or from public sources ---
+        data_classification = "public" {
+          input.source.type in {"public-doc", "public-api", "website"}
+        }
+
+        data_classification = "public" {
+          input.metadata.labels[_] == "public"
+        }
+
+        # --- Classification propagation ---
+        # When combining data from multiple sources, use the highest classification
+        output_classification = result {
+          classifications := [c | c := input.sources[_].classification]
+          result := highest_classification(classifications)
+        }
+
+        highest_classification(classifications) = result {
+          orders := [classification_order[c] | c := classifications[_]]
+          max_order := max(orders)
+          some c
+          classification_order[c] == max_order
+          result := c
+        }
+
+        # --- Helper rules ---
+        contains_sensitive(doc) {
+          regex.match(`\b\d{3}-\d{2}-\d{4}\b`, doc.content)
+        }
+
+        contains_sensitive(doc) {
+          regex.match(`\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b`, doc.content)
+        }
+
+        contains_sensitive(doc) {
+          doc.metadata.labels[_] in {"pii", "financial", "legal-hold"}
+        }

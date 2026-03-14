@@ -1,0 +1,88 @@
+# Local Development: OpenClawInstance for Kind
+# Minimal instance for local development and testing. Uses single mode with
+# 1 replica, local PostgreSQL and Redis, and no TLS.
+#
+# Prerequisites:
+#   - Kind cluster running (see kind-config.yaml)
+#   - PostgreSQL running locally or in-cluster
+#   - Redis running locally or in-cluster
+#
+# Quick PostgreSQL + Redis for dev (run in separate terminal):
+#   docker run -d --name openclaw-postgres -p 5432:5432 \
+#     -e POSTGRES_DB=openclaw -e POSTGRES_USER=openclaw \
+#     -e POSTGRES_PASSWORD=devpassword postgres:16
+#
+#   docker run -d --name openclaw-redis -p 6379:6379 redis:7
+#
+# Usage: kubectl apply -f instance-local.yaml
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openclaw-enterprise
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    environment: development
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: openclaw-postgres
+  namespace: openclaw-enterprise
+type: Opaque
+stringData:
+  # For Kind clusters, use host.docker.internal to reach host services
+  connection-string: "postgres://openclaw:devpassword@host.docker.internal:5432/openclaw?sslmode=disable"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: openclaw-redis
+  namespace: openclaw-enterprise
+type: Opaque
+stringData:
+  connection-string: "redis://host.docker.internal:6379/0"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: openclaw-sso
+  namespace: openclaw-enterprise
+type: Opaque
+stringData:
+  # For local dev, use a static test secret
+  client-secret: "dev-client-secret-not-for-production"
+---
+apiVersion: openclaw.enterprise.io/v1
+kind: OpenClawInstance
+metadata:
+  name: openclaw-local
+  namespace: openclaw-enterprise
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    environment: development
+spec:
+  deploymentMode: single
+  replicas: 1
+  auth:
+    # For local dev, you can use Google or a local Keycloak
+    # To run Keycloak locally:
+    #   docker run -d --name keycloak -p 8180:8080 \
+    #     -e KEYCLOAK_ADMIN=admin -e KEYCLOAK_ADMIN_PASSWORD=admin \
+    #     quay.io/keycloak/keycloak:latest start-dev
+    provider: "http://host.docker.internal:8180/realms/openclaw"
+    clientId: "openclaw-dev"
+    clientSecretRef:
+      name: openclaw-sso
+      key: client-secret
+  storage:
+    postgresSecretRef:
+      name: openclaw-postgres
+      key: connection-string
+    redisSecretRef:
+      name: openclaw-redis
+      key: connection-string
+  # Use locally built images from the Kind registry
+  images:
+    gateway: "localhost:5001/openclaw-enterprise/gateway:dev"
+    opa: "localhost:5001/openclaw-enterprise/opa:dev"

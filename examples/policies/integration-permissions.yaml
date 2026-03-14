@@ -1,0 +1,110 @@
+# Policy Example: Integration/Connector Permissions
+# Controls which users and roles can access which connectors, and what
+# operations they can perform through each integration.
+#
+# Use this when you need to:
+#   - Restrict connector access by role or team
+#   - Limit operations (read-only vs. read-write) per connector
+#   - Require MFA for sensitive integrations
+#   - Enforce time-based access windows
+#
+# Usage: kubectl apply -f integration-permissions.yaml
+---
+apiVersion: openclaw.enterprise.io/v1
+kind: PolicyBundle
+metadata:
+  name: integration-permissions
+  namespace: openclaw-enterprise
+  labels:
+    app.kubernetes.io/part-of: openclaw-enterprise
+    policy-domain: integrations
+spec:
+  policies:
+    - scope: enterprise
+      domain: integrations
+      name: connector-access-control
+      content: |
+        package openclaw.enterprise.integrations
+
+        default allow_connector = false
+
+        # --- Gmail connector ---
+        allow_connector {
+          input.connector.type == "gmail"
+          input.user.role in {"admin", "power-user", "user"}
+          input.action.type == "read"
+        }
+
+        allow_connector {
+          input.connector.type == "gmail"
+          input.user.role in {"admin", "power-user"}
+          input.action.type in {"send", "draft"}
+        }
+
+        # --- Google Calendar connector ---
+        allow_connector {
+          input.connector.type == "gcal"
+          input.user.authenticated == true
+          input.action.type in {"read", "list"}
+        }
+
+        allow_connector {
+          input.connector.type == "gcal"
+          input.user.role in {"admin", "power-user"}
+          input.action.type in {"create", "update"}
+        }
+
+        # --- Jira connector ---
+        allow_connector {
+          input.connector.type == "jira"
+          input.user.role in {"admin", "power-user", "developer"}
+          input.action.type in {"read", "list", "search"}
+        }
+
+        allow_connector {
+          input.connector.type == "jira"
+          input.user.role in {"admin", "power-user", "developer"}
+          input.action.type in {"create", "update", "transition"}
+        }
+
+        # --- GitHub connector ---
+        allow_connector {
+          input.connector.type == "github"
+          input.user.role in {"admin", "developer"}
+        }
+
+        # --- Google Drive connector ---
+        allow_connector {
+          input.connector.type == "gdrive"
+          input.user.authenticated == true
+          input.action.type in {"read", "list", "search"}
+        }
+
+        allow_connector {
+          input.connector.type == "gdrive"
+          input.user.role in {"admin", "power-user"}
+          input.action.type in {"upload", "create", "update"}
+        }
+
+        # --- MFA requirements ---
+        require_mfa {
+          input.connector.type in {"gmail", "github"}
+          input.action.type != "read"
+        }
+
+        require_mfa {
+          input.connector.type == "gdrive"
+          input.action.type in {"upload", "create", "update", "delete"}
+        }
+
+        # --- Deny rules ---
+        deny_connector[msg] {
+          input.connector.enabled == false
+          msg := sprintf("Connector '%s' is not enabled for this instance", [input.connector.type])
+        }
+
+        deny_connector[msg] {
+          require_mfa
+          not input.user.mfa_verified
+          msg := sprintf("MFA required for %s operation on %s connector", [input.action.type, input.connector.type])
+        }
