@@ -1,0 +1,148 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: openclaw-operator-manager-role
+  labels:
+    app.kubernetes.io/name: openclaw-operator
+    app.kubernetes.io/managed-by: openclaw-operator
+rules:
+  # OpenClawInstance CRD management
+  - apiGroups:
+      - openclaw.enterprise.io
+    resources:
+      - openclawinstances
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
+      - openclaw.enterprise.io
+    resources:
+      - openclawinstances/status
+    verbs:
+      - get
+      - update
+      - patch
+  - apiGroups:
+      - openclaw.enterprise.io
+    resources:
+      - openclawinstances/finalizers
+    verbs:
+      - update
+
+  # PolicyBundle CRD management
+  - apiGroups:
+      - openclaw.enterprise.io
+    resources:
+      - policybundles
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
+      - openclaw.enterprise.io
+    resources:
+      - policybundles/status
+    verbs:
+      - get
+      - update
+      - patch
+  - apiGroups:
+      - openclaw.enterprise.io
+    resources:
+      - policybundles/finalizers
+    verbs:
+      - update
+
+  # Deployment management (gateway pods)
+  - apiGroups:
+      - apps
+    resources:
+      - deployments
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+
+  # Service management
+  - apiGroups:
+      - ""
+    resources:
+      - services
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+
+  # Secret read access (storage and auth credentials)
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+
+  # ConfigMap management (OPA policy bundles)
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+
+  # Pod monitoring (for status)
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+
+  # Events (for recording reconciliation events)
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+
+  # Leader election
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete

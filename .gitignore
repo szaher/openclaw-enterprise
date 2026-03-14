@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+vendor/
+
+# Build output
+dist/
+build/
+site/
+*.js.map
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test coverage
+coverage/
+
+# TypeScript
+*.tsbuildinfo
+
+# Go
+*.exe
+*.test
+*.out
+*.prof
+
+# Kubernetes
+*.secret.yaml
+kubeconfig*
+*.key
+*.crt
+
+# Temporary
+*.tmp
+tmp/

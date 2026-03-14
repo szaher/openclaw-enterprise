@@ -1,0 +1,294 @@
+openapi: 3.0.3
+info:
+  title: OpenClaw Enterprise — Audit API
+  version: 0.1.0
+  description: |
+    Append-only audit log for all state-changing operations in OpenClaw Enterprise.
+    Entries are created via the `audit.log` gateway method; this REST API provides
+    read-only access for querying, inspection, and compliance export.
+
+servers:
+  - url: /api/v1
+    description: Default API base path
+
+paths:
+  /audit:
+    get:
+      operationId: listAuditEntries
+      summary: List audit entries with filters
+      description: |
+        Query the audit log with optional filters. Paginated. Requires admin role
+        scoped to the queried tenant.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: user_id
+          in: query
+          schema:
+            type: string
+          description: Filter by user ID
+        - name: action_type
+          in: query
+          schema:
+            type: string
+            enum:
+              - tool_invocation
+              - data_access
+              - model_call
+              - policy_decision
+              - agent_exchange
+              - policy_change
+          description: Filter by action type
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Start of date range (ISO 8601)
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: End of date range (ISO 8601)
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Page number (1-based)
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+          description: Number of entries per page
+      responses:
+        "200":
+          description: Paginated list of audit entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditQueryResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /audit/{id}:
+    get:
+      operationId: getAuditEntry
+      summary: Get a single audit entry by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The ULID of the audit entry
+      responses:
+        "200":
+          description: The audit entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditEntry"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Audit entry not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /audit/export:
+    get:
+      operationId: exportAuditEntries
+      summary: Export audit entries for compliance
+      description: |
+        Bulk export of audit entries in CSV or JSON format. Requires Enterprise Admin role.
+        Returns up to 1000 entries per request.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [csv, json]
+            default: json
+          description: Export format
+        - name: user_id
+          in: query
+          schema:
+            type: string
+        - name: action_type
+          in: query
+          schema:
+            type: string
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Exported audit entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AuditEntry"
+                  total:
+                    type: integer
+            text/csv:
+              schema:
+                type: string
+        "400":
+          description: Invalid format parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    AuditEntry:
+      type: object
+      required:
+        - id
+        - tenantId
+        - userId
+        - timestamp
+        - actionType
+        - actionDetail
+        - dataAccessed
+        - dataClassification
+        - policyApplied
+        - policyResult
+        - policyReason
+        - outcome
+        - requestId
+      properties:
+        id:
+          type: string
+          description: ULID-style sortable identifier
+        tenantId:
+          type: string
+        userId:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        actionType:
+          type: string
+          enum:
+            - tool_invocation
+            - data_access
+            - model_call
+            - policy_decision
+            - agent_exchange
+            - policy_change
+        actionDetail:
+          type: object
+          additionalProperties: true
+        dataAccessed:
+          type: array
+          items:
+            $ref: "#/components/schemas/DataAccessRecord"
+        modelUsed:
+          type: string
+          nullable: true
+        modelTokens:
+          type: object
+          nullable: true
+          properties:
+            input:
+              type: integer
+            output:
+              type: integer
+        dataClassification:
+          type: string
+          enum: [public, internal, confidential, restricted]
+        policyApplied:
+          type: string
+        policyResult:
+          type: string
+          enum: [allow, deny, require_approval]
+        policyReason:
+          type: string
+        outcome:
+          type: string
+          enum: [success, denied, error, pending_approval]
+        requestId:
+          type: string
+
+    DataAccessRecord:
+      type: object
+      required: [source, classification, purpose]
+      properties:
+        source:
+          type: string
+        classification:
+          type: string
+          enum: [public, internal, confidential, restricted]
+        purpose:
+          type: string
+
+    AuditQueryResponse:
+      type: object
+      required: [entries, total, page, page_size, has_more]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditEntry"
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+        has_more:
+          type: boolean
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string

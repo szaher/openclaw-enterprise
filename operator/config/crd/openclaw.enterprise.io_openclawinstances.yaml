@@ -1,0 +1,201 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: openclawinstances.openclaw.enterprise.io
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+spec:
+  group: openclaw.enterprise.io
+  names:
+    kind: OpenClawInstance
+    listKind: OpenClawInstanceList
+    plural: openclawinstances
+    singular: openclawinstance
+    shortNames:
+      - oci
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Mode
+          type: string
+          jsonPath: .spec.deploymentMode
+        - name: Replicas
+          type: integer
+          jsonPath: .spec.replicas
+        - name: Ready
+          type: integer
+          jsonPath: .status.readyReplicas
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          description: >-
+            OpenClawInstance is the Schema for the openclawinstances API.
+            It represents a deployed OpenClaw Enterprise instance.
+          type: object
+          properties:
+            apiVersion:
+              description: API version of the referent.
+              type: string
+            kind:
+              description: Kind of the referent.
+              type: string
+            metadata:
+              type: object
+            spec:
+              description: OpenClawInstanceSpec defines the desired state of an OpenClaw Enterprise instance.
+              type: object
+              required:
+                - deploymentMode
+                - replicas
+                - auth
+                - storage
+              properties:
+                deploymentMode:
+                  description: DeploymentMode controls single replica or high-availability mode.
+                  type: string
+                  enum:
+                    - single
+                    - ha
+                  default: single
+                replicas:
+                  description: Replicas is the number of gateway pod replicas.
+                  type: integer
+                  format: int32
+                  minimum: 1
+                  default: 1
+                auth:
+                  description: Auth holds the SSO / OIDC authentication configuration.
+                  type: object
+                  required:
+                    - provider
+                    - clientId
+                    - clientSecretRef
+                  properties:
+                    provider:
+                      description: SSO provider name (e.g., okta, azure-ad, keycloak).
+                      type: string
+                    clientId:
+                      description: OIDC client identifier.
+                      type: string
+                    clientSecretRef:
+                      description: Reference to a Secret containing the OIDC client secret.
+                      type: object
+                      required:
+                        - name
+                      properties:
+                        name:
+                          description: Name of the Kubernetes Secret.
+                          type: string
+                        key:
+                          description: Key within the Secret data.
+                          type: string
+                storage:
+                  description: Storage holds references to PostgreSQL and Redis connection secrets.
+                  type: object
+                  required:
+                    - postgresSecretRef
+                    - redisSecretRef
+                  properties:
+                    postgresSecretRef:
+                      description: Reference to a Secret containing the PostgreSQL connection string.
+                      type: object
+                      required:
+                        - name
+                      properties:
+                        name:
+                          type: string
+                        key:
+                          type: string
+                    redisSecretRef:
+                      description: Reference to a Secret containing the Redis connection string.
+                      type: object
+                      required:
+                        - name
+                      properties:
+                        name:
+                          type: string
+                        key:
+                          type: string
+                integrations:
+                  description: List of enabled connectors with their configuration.
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - type
+                    properties:
+                      type:
+                        description: Connector type (e.g., gmail, gcal, jira, github, gdrive).
+                        type: string
+                      enabled:
+                        description: Whether this connector is active.
+                        type: boolean
+                        default: true
+                      config:
+                        description: Connector-specific configuration as key-value pairs.
+                        type: object
+                        additionalProperties:
+                          type: string
+            status:
+              description: OpenClawInstanceStatus defines the observed state.
+              type: object
+              properties:
+                readyReplicas:
+                  description: Number of gateway pods in a ready state.
+                  type: integer
+                  format: int32
+                phase:
+                  description: Lifecycle phase of the instance.
+                  type: string
+                observedGeneration:
+                  description: Most recent generation observed by the controller.
+                  type: integer
+                  format: int64
+                conditions:
+                  description: Latest available observations of the instance state.
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - lastTransitionTime
+                      - message
+                      - reason
+                      - status
+                      - type
+                    properties:
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      message:
+                        type: string
+                        maxLength: 32768
+                      observedGeneration:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                      reason:
+                        type: string
+                        maxLength: 1024
+                        minLength: 1
+                        pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      status:
+                        type: string
+                        enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                      type:
+                        type: string
+                        maxLength: 316
+                        pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$

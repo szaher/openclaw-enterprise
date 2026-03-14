@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "references": [
+    { "path": "plugins/shared" },
+    { "path": "plugins/policy-engine" },
+    { "path": "plugins/audit-enterprise" },
+    { "path": "plugins/auth-enterprise" },
+    { "path": "plugins/connector-gmail" },
+    { "path": "plugins/connector-gcal" },
+    { "path": "plugins/connector-jira" },
+    { "path": "plugins/connector-github" },
+    { "path": "plugins/connector-gdrive" },
+    { "path": "plugins/task-intelligence" },
+    { "path": "plugins/auto-response" },
+    { "path": "plugins/work-tracking" },
+    { "path": "plugins/ocip-protocol" },
+    { "path": "plugins/org-intelligence" },
+    { "path": "plugins/visualization" }
+  ]
+}

@@ -1,0 +1,42 @@
+apiVersion: openclaw.enterprise.io/v1
+kind: OpenClawInstance
+metadata:
+  name: production
+  namespace: openclaw-enterprise
+spec:
+  deploymentMode: ha
+  replicas: 3
+  auth:
+    provider: okta
+    clientId: 0oa1b2c3d4e5f6g7h8i9
+    clientSecretRef:
+      name: openclaw-sso-secret
+      key: client-secret
+  storage:
+    postgresSecretRef:
+      name: openclaw-postgres-secret
+      key: connection-string
+    redisSecretRef:
+      name: openclaw-redis-secret
+      key: connection-string
+  integrations:
+    - type: gmail
+      enabled: true
+      config:
+        pollInterval: "60s"
+    - type: gcal
+      enabled: true
+      config:
+        syncInterval: "300s"
+    - type: jira
+      enabled: true
+      config:
+        baseUrl: "https://company.atlassian.net"
+    - type: github
+      enabled: true
+      config:
+        org: "my-org"
+    - type: gdrive
+      enabled: true
+      config:
+        pollInterval: "120s"

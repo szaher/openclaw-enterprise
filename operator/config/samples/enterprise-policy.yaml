@@ -1,0 +1,117 @@
+apiVersion: openclaw.enterprise.io/v1
+kind: PolicyBundle
+metadata:
+  name: enterprise-defaults
+  namespace: openclaw-enterprise
+spec:
+  policies:
+    - scope: enterprise
+      domain: models
+      name: model-routing-default
+      content: |
+        package openclaw.enterprise.models
+
+        default allow = false
+
+        # Allow internal models for all data classifications
+        allow {
+            input.model.provider == "internal"
+        }
+
+        # Allow external models only for public data
+        allow {
+            input.model.provider == "external"
+            input.data.classification == "public"
+        }
+
+        # Block external models for confidential and above
+        deny {
+            input.model.provider == "external"
+            input.data.classification == "confidential"
+        }
+
+        deny {
+            input.model.provider == "external"
+            input.data.classification == "restricted"
+        }
+
+    - scope: enterprise
+      domain: actions
+      name: action-autonomy-default
+      content: |
+        package openclaw.enterprise.actions
+
+        default autonomy_level = "blocked"
+
+        # Read actions are always autonomous
+        autonomy_level = "autonomous" {
+            input.action.type == "read"
+        }
+
+        # Internal write actions require approval
+        autonomy_level = "approve" {
+            input.action.type == "write"
+            input.action.target_system != "external"
+        }
+
+        # External write actions are blocked by default
+        autonomy_level = "blocked" {
+            input.action.type == "write"
+            input.action.target_system == "external"
+        }
+
+    - scope: enterprise
+      domain: integrations
+      name: integration-permissions-default
+      content: |
+        package openclaw.enterprise.integrations
+
+        default allow = false
+
+        # Allow all read operations from enabled connectors
+        allow {
+            input.connector.enabled == true
+            input.operation == "read"
+        }
+
+        # Write operations require explicit connector permission
+        allow {
+            input.connector.enabled == true
+            input.operation == "write"
+            input.connector.write_enabled == true
+        }
+
+    - scope: enterprise
+      domain: data
+      name: data-classification-default
+      content: |
+        package openclaw.enterprise.data
+
+        default classification = "confidential"
+
+        # Default to highest classification when unknown
+        classification = "restricted" {
+            input.data.source == "unknown"
+        }
+
+        # Derived data inherits source classification
+        classification = input.data.source_classification {
+            input.data.derived == true
+        }
+
+    - scope: enterprise
+      domain: audit
+      name: audit-retention-default
+      content: |
+        package openclaw.enterprise.audit
+
+        default retention_days = 365
+
+        # All audit entries must be retained for at least 1 year
+        retention_days = 365 {
+            true
+        }
+
+        # Append-only enforcement
+        allow_delete = false
+        allow_update = false

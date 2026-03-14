@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Project Mind Map</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f1117;
+      color: #e1e4e8;
+      overflow: hidden;
+    }
+    #mindmap-container {
+      width: 100vw;
+      height: 100vh;
+    }
+    svg { width: 100%; height: 100%; }
+    .link {
+      fill: none;
+      stroke: #30363d;
+      stroke-width: 1.5px;
+    }
+    .node text {
+      font-size: 12px;
+      fill: #e1e4e8;
+      cursor: pointer;
+    }
+    .node-root text { font-size: 16px; font-weight: 700; fill: #f0f6fc; }
+    .node-theme text { font-size: 13px; font-weight: 600; fill: #58a6ff; }
+    .node-item text { font-size: 11px; fill: #8b949e; }
+    .node circle {
+      stroke: #21262d;
+      stroke-width: 1.5px;
+      cursor: pointer;
+    }
+    .node circle:hover {
+      stroke: #58a6ff;
+      stroke-width: 2.5px;
+    }
+    .tooltip {
+      position: absolute;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 12px;
+      font-size: 13px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+      max-width: 280px;
+      z-index: 100;
+    }
+    .tooltip .title { font-weight: 600; margin-bottom: 4px; color: #f0f6fc; }
+    .tooltip .detail { color: #8b949e; margin-bottom: 2px; }
+    .tooltip .sources {
+      margin-top: 6px;
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+    .tooltip .source-tag {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 10px;
+      font-size: 10px;
+      background: #21262d;
+      color: #58a6ff;
+    }
+    #metadata-bar {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 10px 16px;
+      font-size: 13px;
+      color: #8b949e;
+      z-index: 50;
+    }
+    #metadata-bar span { margin-right: 14px; }
+    #metadata-bar strong { color: #e1e4e8; }
+    #controls {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      z-index: 50;
+    }
+    #controls button {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #e1e4e8;
+      padding: 6px 14px;
+      margin-left: 6px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    #controls button:hover { border-color: #58a6ff; }
+    #controls button.active { background: #1f6feb; border-color: #1f6feb; }
+  </style>
+</head>
+<body>
+  <div id="metadata-bar"></div>
+  <div id="controls">
+    <button id="btn-tree" class="active">Tree</button>
+    <button id="btn-radial">Radial</button>
+  </div>
+  <div id="mindmap-container">
+    <svg></svg>
+  </div>
+  <div class="tooltip" id="tooltip"></div>
+  <script>
+    const mindMapData = window.__MINDMAP_DATA__ || {
+      root: { id: 'root', name: 'Project', type: 'root', value: 0, sources: [], metadata: {}, children: [] },
+      metadata: { projectName: 'Project', totalItems: 0, themeCount: 0, sourceCount: 0, generatedAt: '' }
+    };
+
+    const themeColors = [
+      '#58a6ff', '#3fb950', '#d29922', '#da3633',
+      '#bc8cff', '#f778ba', '#79c0ff', '#56d364',
+    ];
+
+    const container = document.getElementById('mindmap-container');
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+
+    const svg = d3.select('svg');
+    const g = svg.append('g');
+
+    // Zoom
+    svg.call(d3.zoom()
+      .scaleExtent([0.2, 4])
+      .on('zoom', (event) => g.attr('transform', event.transform)));
+
+    // Metadata bar
+    const meta = mindMapData.metadata;
+    document.getElementById('metadata-bar').innerHTML =
+      `<span>Project: <strong>${meta.projectName}</strong></span>` +
+      `<span>Items: <strong>${meta.totalItems}</strong></span>` +
+      `<span>Themes: <strong>${meta.themeCount}</strong></span>` +
+      `<span>Sources: <strong>${meta.sourceCount}</strong></span>`;
+
+    const tooltip = d3.select('#tooltip');
+    let currentLayout = 'tree';
+
+    function getThemeColor(node) {
+      if (node.data.type === 'root') return '#f0f6fc';
+      if (node.data.type === 'theme') {
+        const idx = node.parent ? node.parent.children.indexOf(node) : 0;
+        return themeColors[idx % themeColors.length];
+      }
+      // Item inherits theme color
+      if (node.parent && node.parent.data.type === 'theme') {
+        const idx = node.parent.parent ? node.parent.parent.children.indexOf(node.parent) : 0;
+        return themeColors[idx % themeColors.length];
+      }
+      return '#8b949e';
+    }
+
+    function nodeRadius(node) {
+      if (node.data.type === 'root') return 10;
+      if (node.data.type === 'theme') return 6 + Math.min(node.data.value, 8);
+      return 4;
+    }
+
+    function render(layout) {
+      g.selectAll('*').remove();
+      currentLayout = layout;
+
+      const root = d3.hierarchy(mindMapData.root);
+
+      let treeLayout;
+      if (layout === 'radial') {
+        treeLayout = d3.tree().size([2 * Math.PI, Math.min(width, height) / 2 - 80]);
+        treeLayout(root);
+
+        g.attr('transform', `translate(${width / 2},${height / 2})`);
+
+        // Radial links
+        g.selectAll('.link')
+          .data(root.links())
+          .join('path')
+          .attr('class', 'link')
+          .attr('d', d3.linkRadial()
+            .angle(d => d.x)
+            .radius(d => d.y));
+
+        // Radial nodes
+        const node = g.selectAll('.node')
+          .data(root.descendants())
+          .join('g')
+          .attr('class', d => `node node-${d.data.type}`)
+          .attr('transform', d => `rotate(${d.x * 180 / Math.PI - 90}) translate(${d.y},0)`);
+
+        node.append('circle')
+          .attr('r', d => nodeRadius(d))
+          .attr('fill', d => getThemeColor(d));
+
+        node.append('text')
+          .attr('dy', '0.31em')
+          .attr('x', d => d.x < Math.PI === !d.children ? 8 : -8)
+          .attr('text-anchor', d => d.x < Math.PI === !d.children ? 'start' : 'end')
+          .attr('transform', d => d.x >= Math.PI ? 'rotate(180)' : null)
+          .text(d => {
+            const name = d.data.name;
+            return name.length > 25 ? name.slice(0, 25) + '...' : name;
+          });
+
+        addInteractivity(node);
+      } else {
+        treeLayout = d3.tree().size([height - 80, width - 200]);
+        treeLayout(root);
+
+        g.attr('transform', 'translate(80,40)');
+
+        // Tree links
+        g.selectAll('.link')
+          .data(root.links())
+          .join('path')
+          .attr('class', 'link')
+          .attr('d', d3.linkHorizontal().x(d => d.y).y(d => d.x));
+
+        // Tree nodes
+        const node = g.selectAll('.node')
+          .data(root.descendants())
+          .join('g')
+          .attr('class', d => `node node-${d.data.type}`)
+          .attr('transform', d => `translate(${d.y},${d.x})`);
+
+        node.append('circle')
+          .attr('r', d => nodeRadius(d))
+          .attr('fill', d => getThemeColor(d));
+
+        node.append('text')
+          .attr('dy', '0.31em')
+          .attr('x', d => d.children ? -12 : 12)
+          .attr('text-anchor', d => d.children ? 'end' : 'start')
+          .text(d => {
+            const name = d.data.name;
+            return name.length > 30 ? name.slice(0, 30) + '...' : name;
+          });
+
+        addInteractivity(node);
+      }
+    }
+
+    function addInteractivity(node) {
+      node.on('mouseover', (event, d) => {
+        const sourceTags = d.data.sources.map(s => `<span class="source-tag">${s}</span>`).join('');
+        tooltip.style('opacity', 1)
+          .style('left', (event.pageX + 12) + 'px')
+          .style('top', (event.pageY - 12) + 'px')
+          .html(
+            `<div class="title">${d.data.name}</div>` +
+            `<div class="detail">Type: ${d.data.type}</div>` +
+            (d.data.type === 'theme' ? `<div class="detail">Items: ${d.data.value}</div>` : '') +
+            (d.data.metadata.classification ? `<div class="detail">Classification: ${d.data.metadata.classification}</div>` : '') +
+            (d.data.metadata.priorityScore !== undefined ? `<div class="detail">Priority: ${d.data.metadata.priorityScore}</div>` : '') +
+            (d.data.sources.length ? `<div class="sources">${sourceTags}</div>` : '')
+          );
+      })
+      .on('mousemove', (event) => {
+        tooltip.style('left', (event.pageX + 12) + 'px')
+          .style('top', (event.pageY - 12) + 'px');
+      })
+      .on('mouseout', () => tooltip.style('opacity', 0));
+
+      // Click to collapse/expand
+      node.on('click', (event, d) => {
+        if (d.children) {
+          d._children = d.children;
+          d.children = null;
+        } else if (d._children) {
+          d.children = d._children;
+          d._children = null;
+        }
+        render(currentLayout);
+      });
+    }
+
+    // Layout toggle buttons
+    document.getElementById('btn-tree').addEventListener('click', () => {
+      document.getElementById('btn-tree').classList.add('active');
+      document.getElementById('btn-radial').classList.remove('active');
+      render('tree');
+    });
+    document.getElementById('btn-radial').addEventListener('click', () => {
+      document.getElementById('btn-radial').classList.add('active');
+      document.getElementById('btn-tree').classList.remove('active');
+      render('radial');
+    });
+
+    // Initial render
+    render('tree');
+
+    // Responsive
+    window.addEventListener('resize', () => render(currentLayout));
+  </script>
+</body>
+</html>

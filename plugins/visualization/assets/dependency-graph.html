@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Task Dependency Graph</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f1117;
+      color: #e1e4e8;
+      overflow: hidden;
+    }
+    #graph-container {
+      width: 100vw;
+      height: 100vh;
+    }
+    svg {
+      width: 100%;
+      height: 100%;
+    }
+    .link {
+      stroke: #30363d;
+      stroke-opacity: 0.6;
+      stroke-width: 1.5px;
+    }
+    .link-arrow {
+      fill: #30363d;
+      fill-opacity: 0.6;
+    }
+    .node circle {
+      stroke: #21262d;
+      stroke-width: 2px;
+      cursor: pointer;
+      transition: stroke 0.2s;
+    }
+    .node circle:hover {
+      stroke: #58a6ff;
+      stroke-width: 3px;
+    }
+    .node text {
+      font-size: 11px;
+      fill: #8b949e;
+      pointer-events: none;
+    }
+    .tooltip {
+      position: absolute;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 12px;
+      font-size: 13px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+      max-width: 280px;
+      z-index: 100;
+    }
+    .tooltip .title { font-weight: 600; margin-bottom: 6px; color: #f0f6fc; }
+    .tooltip .detail { color: #8b949e; margin-bottom: 3px; }
+    .tooltip .badge {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .badge-critical { background: #da3633; color: #fff; }
+    .badge-high { background: #d29922; color: #fff; }
+    .badge-medium { background: #1f6feb; color: #fff; }
+    .badge-low { background: #238636; color: #fff; }
+    #metadata-bar {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 10px 16px;
+      font-size: 13px;
+      color: #8b949e;
+      z-index: 50;
+    }
+    #metadata-bar span { margin-right: 16px; }
+    #metadata-bar strong { color: #e1e4e8; }
+  </style>
+</head>
+<body>
+  <div id="metadata-bar"></div>
+  <div id="graph-container">
+    <svg></svg>
+  </div>
+  <div class="tooltip" id="tooltip"></div>
+  <script>
+    // Data is injected by the plugin at render time
+    const graphData = window.__GRAPH_DATA__ || { nodes: [], links: [], metadata: { totalTasks: 0, totalDependencies: 0, criticalPathLength: 0, generatedAt: '' } };
+
+    const colorMap = {
+      critical: '#da3633',
+      high: '#d29922',
+      medium: '#1f6feb',
+      low: '#238636',
+    };
+
+    const container = document.getElementById('graph-container');
+    const svg = d3.select('svg');
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+
+    // Metadata bar
+    const meta = graphData.metadata;
+    document.getElementById('metadata-bar').innerHTML =
+      `<span>Tasks: <strong>${meta.totalTasks}</strong></span>` +
+      `<span>Dependencies: <strong>${meta.totalDependencies}</strong></span>` +
+      `<span>Critical path: <strong>${meta.criticalPathLength}</strong></span>`;
+
+    // Arrow marker
+    svg.append('defs').append('marker')
+      .attr('id', 'arrowhead')
+      .attr('viewBox', '0 -5 10 10')
+      .attr('refX', 20)
+      .attr('refY', 0)
+      .attr('markerWidth', 6)
+      .attr('markerHeight', 6)
+      .attr('orient', 'auto')
+      .append('path')
+      .attr('d', 'M0,-5L10,0L0,5')
+      .attr('class', 'link-arrow');
+
+    const g = svg.append('g');
+
+    // Zoom
+    svg.call(d3.zoom()
+      .scaleExtent([0.2, 4])
+      .on('zoom', (event) => g.attr('transform', event.transform)));
+
+    const simulation = d3.forceSimulation(graphData.nodes)
+      .force('link', d3.forceLink(graphData.links).id(d => d.id).distance(100))
+      .force('charge', d3.forceManyBody().strength(-300))
+      .force('center', d3.forceCenter(width / 2, height / 2))
+      .force('collision', d3.forceCollide().radius(30));
+
+    const link = g.append('g')
+      .selectAll('line')
+      .data(graphData.links)
+      .join('line')
+      .attr('class', 'link')
+      .attr('marker-end', 'url(#arrowhead)');
+
+    const node = g.append('g')
+      .selectAll('g')
+      .data(graphData.nodes)
+      .join('g')
+      .attr('class', 'node')
+      .call(d3.drag()
+        .on('start', dragStarted)
+        .on('drag', dragged)
+        .on('end', dragEnded));
+
+    node.append('circle')
+      .attr('r', d => 6 + Math.min(d.blockingCount * 2, 10))
+      .attr('fill', d => colorMap[d.group] || colorMap.medium);
+
+    node.append('text')
+      .attr('dx', 14)
+      .attr('dy', 4)
+      .text(d => d.title.length > 30 ? d.title.slice(0, 30) + '...' : d.title);
+
+    // Tooltip
+    const tooltip = d3.select('#tooltip');
+
+    node.on('mouseover', (event, d) => {
+      tooltip
+        .style('opacity', 1)
+        .style('left', (event.pageX + 12) + 'px')
+        .style('top', (event.pageY - 12) + 'px')
+        .html(
+          `<div class="title">${d.title}</div>` +
+          `<div class="detail">Status: ${d.status}</div>` +
+          `<div class="detail">Priority: ${d.priorityScore}</div>` +
+          `<div class="detail">Blocks: ${d.blockingCount} | Blocked by: ${d.blockedByCount}</div>` +
+          `<div class="detail">Deadline: ${d.deadline || 'None'}</div>` +
+          `<span class="badge badge-${d.group}">${d.group}</span>`
+        );
+    })
+    .on('mousemove', (event) => {
+      tooltip
+        .style('left', (event.pageX + 12) + 'px')
+        .style('top', (event.pageY - 12) + 'px');
+    })
+    .on('mouseout', () => {
+      tooltip.style('opacity', 0);
+    });
+
+    // Click to highlight connections
+    node.on('click', (event, d) => {
+      const connected = new Set();
+      connected.add(d.id);
+      graphData.links.forEach(l => {
+        const src = typeof l.source === 'object' ? l.source.id : l.source;
+        const tgt = typeof l.target === 'object' ? l.target.id : l.target;
+        if (src === d.id) connected.add(tgt);
+        if (tgt === d.id) connected.add(src);
+      });
+
+      node.select('circle').attr('opacity', n => connected.has(n.id) ? 1 : 0.15);
+      node.select('text').attr('opacity', n => connected.has(n.id) ? 1 : 0.15);
+      link.attr('stroke-opacity', l => {
+        const src = typeof l.source === 'object' ? l.source.id : l.source;
+        const tgt = typeof l.target === 'object' ? l.target.id : l.target;
+        return (src === d.id || tgt === d.id) ? 0.8 : 0.05;
+      });
+    });
+
+    // Double-click to reset
+    svg.on('dblclick.reset', () => {
+      node.select('circle').attr('opacity', 1);
+      node.select('text').attr('opacity', 1);
+      link.attr('stroke-opacity', 0.6);
+    });
+
+    simulation.on('tick', () => {
+      link
+        .attr('x1', d => d.source.x)
+        .attr('y1', d => d.source.y)
+        .attr('x2', d => d.target.x)
+        .attr('y2', d => d.target.y);
+      node.attr('transform', d => `translate(${d.x},${d.y})`);
+    });
+
+    function dragStarted(event, d) {
+      if (!event.active) simulation.alphaTarget(0.3).restart();
+      d.fx = d.x;
+      d.fy = d.y;
+    }
+    function dragged(event, d) {
+      d.fx = event.x;
+      d.fy = event.y;
+    }
+    function dragEnded(event, d) {
+      if (!event.active) simulation.alphaTarget(0);
+      d.fx = null;
+      d.fy = null;
+    }
+
+    // Responsive resize
+    window.addEventListener('resize', () => {
+      simulation.force('center', d3.forceCenter(container.clientWidth / 2, container.clientHeight / 2));
+      simulation.alpha(0.3).restart();
+    });
+  </script>
+</body>
+</html>

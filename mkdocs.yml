@@ -1,0 +1,150 @@
+site_name: OpenClaw Enterprise
+site_description: Enterprise-grade AI assistant platform — policy-governed, self-hosted, open-source
+site_url: https://szaher.github.io/openclaw-enterprise/
+repo_url: https://github.com/szaher/openclaw-enterprise
+repo_name: szaher/openclaw-enterprise
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: deep purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: deep purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+  font:
+    text: Inter
+    code: JetBrains Mono
+
+plugins:
+  - search
+  - tags
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.mark
+  - pymdownx.critic
+  - pymdownx.keys
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - def_list
+  - toc:
+      permalink: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/szaher/openclaw-enterprise
+  generator: false
+
+copyright: Copyright &copy; 2026 OpenClaw Enterprise
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - getting-started/index.md
+      - What is OpenClaw?: getting-started/what-is-openclaw.md
+      - Architecture: getting-started/architecture.md
+      - Key Concepts: getting-started/concepts.md
+      - Quickstart: getting-started/quickstart.md
+      - Accessing OpenClaw: getting-started/accessing-openclaw.md
+  - User Guide:
+      - user-guide/index.md
+      - Daily Briefing: user-guide/daily-briefing.md
+      - Auto-Response: user-guide/auto-response.md
+      - Work Tracking: user-guide/work-tracking.md
+      - Agent-to-Agent (OCIP): user-guide/agent-to-agent.md
+      - Org Intelligence: user-guide/org-intelligence.md
+      - Visualizations: user-guide/visualizations.md
+  - Admin Guide:
+      - admin-guide/index.md
+      - Policy Engine: admin-guide/policy-engine.md
+      - Data Classification: admin-guide/data-classification.md
+      - Connectors: admin-guide/connectors.md
+      - Audit Log: admin-guide/audit-log.md
+      - RBAC & SSO: admin-guide/rbac-sso.md
+  - Deployment:
+      - deployment/index.md
+      - Prerequisites: deployment/prerequisites.md
+      - Kubernetes Operator: deployment/operator.md
+      - Configuration Reference: deployment/configuration.md
+      - Scaling & Performance: deployment/scaling.md
+      - Compatibility Matrix: deployment/compatibility.md
+  - Developer Guide:
+      - developer-guide/index.md
+      - Plugin Architecture: developer-guide/plugin-architecture.md
+      - Building Plugins: developer-guide/building-plugins.md
+      - Shared Library: developer-guide/shared-library.md
+      - Testing: developer-guide/testing.md
+      - Contributing: developer-guide/contributing.md
+  - How-To Guides:
+      - how-to/index.md
+      - Configure Gmail Connector: how-to/configure-gmail.md
+      - Write Custom Policies: how-to/write-policies.md
+      - Enable Auto-Response: how-to/enable-auto-response.md
+      - Set Up Webhooks: how-to/setup-webhooks.md
+      - Query the Audit Log: how-to/query-audit-log.md
+      - Set Up OCIP Exchanges: how-to/setup-ocip.md
+  - Reference:
+      - reference/index.md
+      - Data Model: reference/data-model.md
+      - API Reference: reference/api.md
+      - Policy Domains: reference/policy-domains.md
+      - OCIP Protocol: reference/ocip-protocol.md
+      - Architecture Decision Records:
+          - reference/adr/index.md
+          - ADR-001 OPA over Cedar: reference/adr/001-opa-over-cedar.md
+          - ADR-002 Multi-Gateway Tenancy: reference/adr/002-multi-gateway-tenancy.md
+          - ADR-003 Plugin per Capability: reference/adr/003-plugin-per-capability.md
+          - ADR-004 Multi-Signal Task Correlation: reference/adr/004-multi-signal-task-correlation.md
+          - ADR-005 Three-Layer Classification: reference/adr/005-three-layer-classification.md
+          - ADR-006 Append-Only Audit: reference/adr/006-append-only-audit.md
+          - ADR-007 OCIP via sessions_send: reference/adr/007-ocip-via-sessions-send.md
+          - ADR-008 D3 Canvas Visualization: reference/adr/008-d3-canvas-visualization.md

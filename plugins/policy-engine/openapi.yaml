@@ -1,0 +1,202 @@
+openapi: 3.0.3
+info:
+  title: OpenClaw Enterprise Policy Engine API
+  version: 1.0.0
+  description: Policy CRUD and evaluation endpoints for the enterprise policy engine.
+
+paths:
+  /api/v1/policies:
+    post:
+      summary: Create a new policy
+      operationId: createPolicy
+      tags: [policies]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePolicyRequest'
+      responses:
+        '201':
+          description: Policy created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Policy'
+        '400':
+          description: Hierarchy violation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      summary: List policies
+      operationId: listPolicies
+      tags: [policies]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: scope
+          in: query
+          schema:
+            type: string
+            enum: [enterprise, org, team, user]
+        - name: domain
+          in: query
+          schema:
+            type: string
+            enum: [models, actions, integrations, agent-to-agent, features, data, audit]
+      responses:
+        '200':
+          description: List of policies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Policy'
+
+  /api/v1/policies/{id}:
+    get:
+      summary: Get policy by ID
+      operationId: getPolicy
+      tags: [policies]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Policy found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Policy'
+        '404':
+          description: Policy not found
+    put:
+      summary: Update a policy
+      operationId: updatePolicy
+      tags: [policies]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePolicyRequest'
+      responses:
+        '200':
+          description: Policy updated
+        '400':
+          description: Hierarchy violation
+        '404':
+          description: Policy not found
+    delete:
+      summary: Deprecate a policy
+      operationId: deprecatePolicy
+      tags: [policies]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Policy deprecated
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Policy:
+      type: object
+      required: [id, scope, scopeId, domain, name, version, content, status, createdBy, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        scope:
+          type: string
+          enum: [enterprise, org, team, user]
+        scopeId:
+          type: string
+        domain:
+          type: string
+          enum: [models, actions, integrations, agent-to-agent, features, data, audit]
+        name:
+          type: string
+        version:
+          type: string
+        content:
+          type: string
+        status:
+          type: string
+          enum: [active, draft, deprecated]
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        changeReason:
+          type: string
+
+    CreatePolicyRequest:
+      type: object
+      required: [scope, scopeId, domain, name, version, content, changeReason]
+      properties:
+        scope:
+          type: string
+          enum: [enterprise, org, team, user]
+        scopeId:
+          type: string
+        domain:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        content:
+          type: string
+        changeReason:
+          type: string
+
+    UpdatePolicyRequest:
+      type: object
+      required: [changeReason]
+      properties:
+        content:
+          type: string
+        status:
+          type: string
+        changeReason:
+          type: string
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        detail:
+          type: string

@@ -1,0 +1,471 @@
+openapi: 3.1.0
+info:
+  title: OpenClaw Enterprise — Admin API
+  version: 1.0.0
+  description: >
+    Enterprise administration endpoints for tenant management, connector
+    management, system status, operational metrics, and authentication.
+    All endpoints require SSO/OIDC authentication and include X-Request-Id
+    headers. Mutations produce audit log entries.
+
+servers:
+  - url: /api/v1
+    description: API v1 base path
+
+paths:
+  /auth/callback:
+    post:
+      operationId: authCallback
+      summary: Exchange authorization code for tokens and establish session
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  description: OAuth2 authorization code
+      responses:
+        '200':
+          description: Successfully authenticated
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authenticated:
+                    type: boolean
+                  user:
+                    $ref: '#/components/schemas/UserSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '502':
+          description: Token exchange failed
+
+  /auth/userinfo:
+    get:
+      operationId: getUserInfo
+      summary: Return current user context from active session
+      tags: [Authentication]
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Current user context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserContext'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /tenants:
+    get:
+      operationId: listTenants
+      summary: List all tenants (enterprise admin only)
+      tags: [Tenant Management]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of tenants
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenants:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Tenant'
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /tenants/{id}/status:
+    get:
+      operationId: getTenantStatus
+      summary: Get tenant health status
+      tags: [Tenant Management]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Tenant status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Tenant not found
+
+  /connectors:
+    get:
+      operationId: listConnectors
+      summary: List connectors for the current tenant
+      tags: [Connector Management]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of connectors
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connectors:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Connector'
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      operationId: createConnector
+      summary: Register a new connector (admin only)
+      tags: [Connector Management]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateConnectorRequest'
+      responses:
+        '201':
+          description: Connector created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connector'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /connectors/{id}:
+    delete:
+      operationId: deleteConnector
+      summary: Disable a connector (does not delete historical data)
+      tags: [Connector Management]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Connector disabled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  status:
+                    type: string
+                    enum: [disabled]
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Connector not found
+
+  /status:
+    get:
+      operationId: getSystemStatus
+      summary: Aggregated system health
+      tags: [System Status]
+      responses:
+        '200':
+          description: All components healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemStatus'
+        '503':
+          description: One or more components unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemStatus'
+
+  /metrics:
+    get:
+      operationId: getOperationalMetrics
+      summary: Operational metrics (admin only)
+      tags: [System Status]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Operational metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationalMetrics'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session
+
+  schemas:
+    UserSummary:
+      type: object
+      properties:
+        userId:
+          type: string
+        email:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [enterprise_admin, org_admin, team_lead, user]
+        orgUnit:
+          type: string
+
+    UserContext:
+      type: object
+      properties:
+        userId:
+          type: string
+        email:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [enterprise_admin, org_admin, team_lead, user]
+        orgUnit:
+          type: string
+        tenantId:
+          type: string
+        effectivePermissions:
+          type: object
+          properties:
+            canManagePolicies:
+              type: boolean
+            policyScope:
+              type: string
+              enum: [enterprise, org, team, user]
+            canQueryAudit:
+              type: boolean
+            auditScope:
+              type: string
+              enum: [enterprise, org, team, user]
+
+    Tenant:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [active, suspended, provisioning]
+        gatewayInstances:
+          type: integer
+        connectorCount:
+          type: integer
+        policyCount:
+          type: integer
+        userCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    TenantStatus:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+        gatewayInstances:
+          type: integer
+        connectorCount:
+          type: integer
+        policyCount:
+          type: integer
+        userCount:
+          type: integer
+
+    ConnectorType:
+      type: string
+      enum: [gmail, gcal, jira, github, gdrive]
+
+    Connector:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          $ref: '#/components/schemas/ConnectorType'
+        tenantId:
+          type: string
+        credentialsSecretRef:
+          type: string
+        config:
+          type: object
+        status:
+          type: string
+          enum: [active, disabled, error]
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateConnectorRequest:
+      type: object
+      required: [type, credentials_secret_ref]
+      properties:
+        type:
+          $ref: '#/components/schemas/ConnectorType'
+        credentials_secret_ref:
+          type: string
+          description: Kubernetes Secret name containing connector credentials
+        config:
+          type: object
+          properties:
+            polling_interval_seconds:
+              type: number
+              default: 300
+            filters:
+              type: object
+              description: Connector-specific filters
+
+    SystemStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded]
+        components:
+          type: object
+          properties:
+            gateway:
+              $ref: '#/components/schemas/ComponentHealth'
+            policyEngine:
+              $ref: '#/components/schemas/ComponentHealth'
+            opa:
+              $ref: '#/components/schemas/ComponentHealth'
+            connectors:
+              type: object
+              additionalProperties:
+                $ref: '#/components/schemas/ComponentHealth'
+            database:
+              $ref: '#/components/schemas/ComponentHealth'
+        timestamp:
+          type: string
+          format: date-time
+
+    ComponentHealth:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy, unreachable]
+
+    OperationalMetrics:
+      type: object
+      properties:
+        activeUsers:
+          type: integer
+        autoResponsesSent:
+          type: integer
+        tasksDiscovered:
+          type: integer
+        modelCalls:
+          type: integer
+        policyEvaluations:
+          type: integer
+        auditEntries:
+          type: integer
+        collectedAt:
+          type: string
+          format: date-time
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              message:
+                type: string
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              message:
+                type: string
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              message:
+                type: string

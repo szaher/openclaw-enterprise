@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Priority Matrix (Eisenhower)</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f1117;
+      color: #e1e4e8;
+      overflow: hidden;
+    }
+    #matrix-container {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    svg { display: block; }
+    .quadrant-bg { opacity: 0.08; }
+    .quadrant-label {
+      font-size: 14px;
+      font-weight: 600;
+      fill: #8b949e;
+      text-anchor: middle;
+    }
+    .axis-label {
+      font-size: 13px;
+      fill: #484f58;
+      text-anchor: middle;
+    }
+    .task-dot {
+      cursor: pointer;
+      transition: r 0.2s;
+    }
+    .task-dot:hover {
+      stroke: #f0f6fc;
+      stroke-width: 2px;
+    }
+    .task-label {
+      font-size: 10px;
+      fill: #8b949e;
+      pointer-events: none;
+    }
+    .grid-line {
+      stroke: #21262d;
+      stroke-dasharray: 4 4;
+    }
+    .divider {
+      stroke: #30363d;
+      stroke-width: 2;
+      stroke-dasharray: 6 4;
+    }
+    .tooltip {
+      position: absolute;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 12px;
+      font-size: 13px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+      max-width: 260px;
+      z-index: 100;
+    }
+    .tooltip .title { font-weight: 600; margin-bottom: 4px; color: #f0f6fc; }
+    .tooltip .detail { color: #8b949e; margin-bottom: 2px; }
+    #metadata-bar {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 10px 16px;
+      font-size: 13px;
+      color: #8b949e;
+      z-index: 50;
+    }
+    #metadata-bar span { margin-right: 14px; }
+    #metadata-bar strong { color: #e1e4e8; }
+    .legend {
+      position: absolute;
+      bottom: 12px;
+      right: 12px;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 12px;
+      color: #8b949e;
+    }
+    .legend-item { display: flex; align-items: center; margin-bottom: 4px; }
+    .legend-item:last-child { margin-bottom: 0; }
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 8px;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+  <div id="metadata-bar"></div>
+  <div id="matrix-container">
+    <svg></svg>
+  </div>
+  <div class="tooltip" id="tooltip"></div>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#da3633"></div>Do First</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#1f6feb"></div>Schedule</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#d29922"></div>Delegate</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#484f58"></div>Eliminate</div>
+  </div>
+  <script>
+    const matrixData = window.__MATRIX_DATA__ || { tasks: [], quadrants: { 'do-first': [], schedule: [], delegate: [], eliminate: [] }, metadata: { totalTasks: 0, quadrantCounts: {}, generatedAt: '' } };
+
+    const quadrantColors = {
+      'do-first': '#da3633',
+      schedule: '#1f6feb',
+      delegate: '#d29922',
+      eliminate: '#484f58',
+    };
+
+    const container = document.getElementById('matrix-container');
+    const margin = { top: 40, right: 40, bottom: 60, left: 60 };
+    const size = Math.min(container.clientWidth, container.clientHeight) - 40;
+    const w = size - margin.left - margin.right;
+    const h = size - margin.top - margin.bottom;
+
+    const svg = d3.select('svg')
+      .attr('width', size)
+      .attr('height', size);
+
+    const g = svg.append('g')
+      .attr('transform', `translate(${margin.left},${margin.top})`);
+
+    // Metadata bar
+    const mc = matrixData.metadata.quadrantCounts;
+    document.getElementById('metadata-bar').innerHTML =
+      `<span>Total: <strong>${matrixData.metadata.totalTasks}</strong></span>` +
+      `<span>Do First: <strong>${mc['do-first'] || 0}</strong></span>` +
+      `<span>Schedule: <strong>${mc.schedule || 0}</strong></span>` +
+      `<span>Delegate: <strong>${mc.delegate || 0}</strong></span>` +
+      `<span>Eliminate: <strong>${mc.eliminate || 0}</strong></span>`;
+
+    const x = d3.scaleLinear().domain([0, 100]).range([0, w]);
+    const y = d3.scaleLinear().domain([0, 100]).range([h, 0]);
+
+    // Quadrant backgrounds
+    const bgData = [
+      { x: 50, y: 50, w: 50, h: 50, color: '#da3633', label: 'Do First' },     // top-right
+      { x: 0, y: 50, w: 50, h: 50, color: '#1f6feb', label: 'Schedule' },       // top-left
+      { x: 50, y: 0, w: 50, h: 50, color: '#d29922', label: 'Delegate' },       // bottom-right
+      { x: 0, y: 0, w: 50, h: 50, color: '#484f58', label: 'Eliminate' },       // bottom-left
+    ];
+
+    bgData.forEach(q => {
+      g.append('rect')
+        .attr('class', 'quadrant-bg')
+        .attr('x', x(q.x))
+        .attr('y', y(q.y + q.h))
+        .attr('width', x(q.w) - x(0))
+        .attr('height', y(0) - y(q.h))
+        .attr('fill', q.color);
+
+      g.append('text')
+        .attr('class', 'quadrant-label')
+        .attr('x', x(q.x + q.w / 2))
+        .attr('y', y(q.y + q.h) + 20)
+        .text(q.label);
+    });
+
+    // Dividers
+    g.append('line').attr('class', 'divider')
+      .attr('x1', x(50)).attr('y1', y(0)).attr('x2', x(50)).attr('y2', y(100));
+    g.append('line').attr('class', 'divider')
+      .attr('x1', x(0)).attr('y1', y(50)).attr('x2', x(100)).attr('y2', y(50));
+
+    // Axis labels
+    svg.append('text').attr('class', 'axis-label')
+      .attr('x', margin.left + w / 2).attr('y', size - 10)
+      .text('Urgency');
+    svg.append('text').attr('class', 'axis-label')
+      .attr('transform', `translate(14,${margin.top + h / 2}) rotate(-90)`)
+      .text('Importance');
+
+    // Tooltip
+    const tooltip = d3.select('#tooltip');
+
+    // Task dots
+    const dots = g.selectAll('.task-dot')
+      .data(matrixData.tasks)
+      .join('circle')
+      .attr('class', 'task-dot')
+      .attr('cx', d => x(d.urgency))
+      .attr('cy', d => y(d.importance))
+      .attr('r', d => 4 + Math.min(d.priorityScore / 15, 6))
+      .attr('fill', d => quadrantColors[d.quadrant] || '#484f58')
+      .attr('opacity', 0.85);
+
+    // Labels for high-priority items
+    g.selectAll('.task-label')
+      .data(matrixData.tasks.filter(t => t.priorityScore >= 60))
+      .join('text')
+      .attr('class', 'task-label')
+      .attr('x', d => x(d.urgency) + 8)
+      .attr('y', d => y(d.importance) + 4)
+      .text(d => d.title.length > 20 ? d.title.slice(0, 20) + '...' : d.title);
+
+    // Interactivity
+    dots.on('mouseover', (event, d) => {
+      tooltip.style('opacity', 1)
+        .style('left', (event.pageX + 12) + 'px')
+        .style('top', (event.pageY - 12) + 'px')
+        .html(
+          `<div class="title">${d.title}</div>` +
+          `<div class="detail">Quadrant: ${d.quadrant}</div>` +
+          `<div class="detail">Urgency: ${d.urgency} | Importance: ${d.importance}</div>` +
+          `<div class="detail">Priority Score: ${d.priorityScore}</div>` +
+          `<div class="detail">Deadline: ${d.deadline || 'None'}</div>` +
+          `<div class="detail">Status: ${d.status}</div>`
+        );
+    })
+    .on('mousemove', (event) => {
+      tooltip.style('left', (event.pageX + 12) + 'px')
+        .style('top', (event.pageY - 12) + 'px');
+    })
+    .on('mouseout', () => tooltip.style('opacity', 0));
+
+    // Click to highlight quadrant
+    dots.on('click', (event, d) => {
+      dots.attr('opacity', t => t.quadrant === d.quadrant ? 0.95 : 0.15);
+    });
+
+    svg.on('dblclick.reset', () => {
+      dots.attr('opacity', 0.85);
+    });
+
+    // Responsive
+    window.addEventListener('resize', () => {
+      const newSize = Math.min(container.clientWidth, container.clientHeight) - 40;
+      svg.attr('width', newSize).attr('height', newSize);
+    });
+  </script>
+</body>
+</html>

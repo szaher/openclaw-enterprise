@@ -1,0 +1,25 @@
+{
+  "name": "@openclaw-enterprise/auto-response",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/plugin.js",
+  "types": "dist/plugin.d.ts",
+  "openclaw": {
+    "type": "plugin",
+    "name": "auto-response",
+    "dependencies": ["policy-engine", "audit-enterprise"]
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@openclaw-enterprise/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

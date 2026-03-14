@@ -1,0 +1,149 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: policybundles.openclaw.enterprise.io
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+spec:
+  group: openclaw.enterprise.io
+  names:
+    kind: PolicyBundle
+    listKind: PolicyBundleList
+    plural: policybundles
+    singular: policybundle
+    shortNames:
+      - pb
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Applied
+          type: integer
+          jsonPath: .status.applied
+        - name: Total
+          type: integer
+          jsonPath: .status.total
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          description: >-
+            PolicyBundle is the Schema for the policybundles API.
+            It represents a collection of policies to be loaded into the policy engine.
+          type: object
+          properties:
+            apiVersion:
+              description: API version of the referent.
+              type: string
+            kind:
+              description: Kind of the referent.
+              type: string
+            metadata:
+              type: object
+            spec:
+              description: PolicyBundleSpec defines the desired state of a PolicyBundle.
+              type: object
+              required:
+                - policies
+              properties:
+                policies:
+                  description: List of policy definitions in this bundle.
+                  type: array
+                  minItems: 1
+                  items:
+                    description: A single policy definition.
+                    type: object
+                    required:
+                      - scope
+                      - domain
+                      - name
+                      - content
+                    properties:
+                      scope:
+                        description: Hierarchical scope this policy applies to.
+                        type: string
+                        enum:
+                          - enterprise
+                          - org
+                          - team
+                          - user
+                      domain:
+                        description: Policy domain.
+                        type: string
+                        enum:
+                          - models
+                          - actions
+                          - integrations
+                          - agent-to-agent
+                          - features
+                          - data
+                          - audit
+                      name:
+                        description: Human-readable identifier for this policy.
+                        type: string
+                        minLength: 1
+                      content:
+                        description: Rego policy source or Cedar policy body.
+                        type: string
+                        minLength: 1
+            status:
+              description: PolicyBundleStatus defines the observed state.
+              type: object
+              properties:
+                applied:
+                  description: Number of policies successfully applied.
+                  type: integer
+                total:
+                  description: Total number of policies in this bundle.
+                  type: integer
+                lastReloadTime:
+                  description: When policies were last reloaded into OPA.
+                  type: string
+                  format: date-time
+                observedGeneration:
+                  description: Most recent generation observed by the controller.
+                  type: integer
+                  format: int64
+                conditions:
+                  description: Latest available observations of the bundle state.
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - lastTransitionTime
+                      - message
+                      - reason
+                      - status
+                      - type
+                    properties:
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      message:
+                        type: string
+                        maxLength: 32768
+                      observedGeneration:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                      reason:
+                        type: string
+                        maxLength: 1024
+                        minLength: 1
+                        pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      status:
+                        type: string
+                        enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                      type:
+                        type: string
+                        maxLength: 316
+                        pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
